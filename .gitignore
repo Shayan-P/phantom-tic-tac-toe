@@ -11,3 +11,8 @@ questions
 __pycache__
 
 **/build
+.idea
+
+cmake-build-debug
+
+checkpoints

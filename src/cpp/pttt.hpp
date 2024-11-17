@@ -14,17 +14,19 @@
 #include "pttt_game_dynamics.hpp"
 
 namespace pttt {
+    using PTTT_Infoset = std::pair<std::string, uint32_t>; // name, valid mask
+
     class Game {
         GameDynamics game_;
         bool done = false;
         Player winner;
         bool tie = false;
-        std::string info_set_repr[2] = {"|", "|"}; // todo later we can replace this with a better representation...
+        PTTT_Infoset info_set_repr[2] = {PTTT_Infoset("|", 0), PTTT_Infoset("|", 0)}; // todo later we can replace this with a better representation...
 
     public:
-        static const int ACTION_MAX_DIM = 9;
-        static const int NUM_INFO_SETS = 14482810 + 8827459; // later figure out a way to compute this, or at least confirm that this is correct...
-        static const int NUM_PLAYERS = 2;
+        static constexpr int ACTION_MAX_DIM = 9;
+        static constexpr int NUM_INFO_SETS = 14482810 + 8827459; // later figure out a way to compute this, or at least confirm that this is correct...
+        static constexpr int NUM_PLAYERS = 2;
 
         using T = double;
         // using Player = pttt::Player;
@@ -34,10 +36,7 @@ namespace pttt {
         using Player = pttt::Player;
 
         Game() {
-            if(!precomputed) {
-                precomputed = true;
-                Game::precompute();
-            }
+            precompute_if_needed();
         }
 
         bool is_terminal() const {
@@ -82,8 +81,9 @@ namespace pttt {
             }
             char cell = '0' + action_;
             char succ = succ_move ? '*' : '.';
-            info_set_repr[PlayerIdx(cur_player)] += cell;
-            info_set_repr[PlayerIdx(cur_player)] += succ; 
+            info_set_repr[PlayerIdx(cur_player)].first += cell;
+            info_set_repr[PlayerIdx(cur_player)].first += succ;
+            info_set_repr[PlayerIdx(cur_player)].second |= 1 << action_;
         }
 
         void actions(BufferInt &buffer) { // don't use vector or dynamic memory
@@ -107,8 +107,8 @@ namespace pttt {
             auto idx = PlayerIdx(player);
             auto it = info_set_to_idx[idx].find(info_set_repr[idx]);
             std::cout << idx << std::endl;
-            std::cout << info_set_repr[idx] << std::endl;
-            std::cout << info_set_repr[1-idx] << std::endl;
+            std::cout << info_set_repr[idx].first << std::endl;
+            std::cout << info_set_repr[1-idx].first << std::endl;
             std::cout << game_ << std::endl;
             assert(it != info_set_to_idx[idx].end());
             return it->second;
@@ -131,18 +131,89 @@ namespace pttt {
             assert(info_sets_reprs_p[0].size() + info_sets_reprs_p[1].size() == NUM_INFO_SETS);
         }
 
-        static void save_to_file(const std::string &name, std::vector<std::array<T, ACTION_MAX_DIM>> &average_policy) {
-            auto it1 = average_policy.begin();
-            auto it2 = it1 + info_sets_reprs_p[0].size();
-            auto it3 = average_policy.end();
+    public:
+        static void save_strategy_to_file(const std::string &name, std::vector<std::array<T, ACTION_MAX_DIM>> &average_policy) {
+            precompute_if_needed();
+
+            std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it1 = average_policy.begin();
+            std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it2 = it1 + info_sets_reprs_p[0].size();
+            std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it3 = average_policy.end();
             assert(info_sets_reprs_p[0].size() + info_sets_reprs_p[1].size() == average_policy.size());
 
-            io::save_information_sets(pttt::get_player0_infoset_path(), it1, it2);
-            io::save_information_sets(pttt::get_player1_infoset_path(), it2, it3);
+            // TODO: note one needs to assign average strategy to the nodes have value 0!
+            // ugly ugly code... :D
+            int idx = 0;
+            for(int p = 0; p < 2; p++) {
+                for(int i = 0; i < info_sets_reprs_p[p].size(); i++, idx++) {
+                    T sm = 0;
+                    for(int j = 0; j < ACTION_MAX_DIM; j++) {
+                        sm += average_policy[idx][j];
+                    }
+                    if (sm <= 1e-9) {
+                        // assign uniform distribution
+                        auto mask = info_sets_reprs_p[p][i].second;
+                        int num_valid_actions = __builtin_popcount(mask);
+                        sm = num_valid_actions;
+                        for(int j = 0; j < ACTION_MAX_DIM; j++) {
+                            if(mask & (1<<j))
+                                average_policy[idx][j] = 1.0;
+                        }
+                    }
+                    for(int j = 0; j < ACTION_MAX_DIM; j++) {
+                        average_policy[idx][j] /= sm;
+                    }
+                }
+            }
+
+            io::save_to_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_p0.npy"), it1, it2);
+            io::save_to_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_p1.npy"), it2, it3);
         }
 
-        static std::vector<std::string> info_sets_reprs_p[2];
-        static std::map<std::string, int> info_set_to_idx[2];
+        static void load_strategy_from_file(const std::string &name, std::vector<std::array<T, ACTION_MAX_DIM>> &average_policy) {
+            precompute_if_needed();
+
+            assert(average_policy.size() == NUM_INFO_SETS);
+
+            std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it1 = average_policy.begin();
+            std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it2 = it1 + info_sets_reprs_p[0].size();
+
+            io::load_from_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_p0.npy"), it1);
+            io::load_from_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_p1.npy"), it2);
+        }
+
+        // TODO: later write a function that can load/save the state of regret minimizers...
+        // static void save_state_from_file(const std::string &name, ) {
+        //     precompute_if_needed();
+
+        //     assert(average_policy.size() == NUM_INFO_SETS);
+
+        //     std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it1 = average_policy.begin();
+        //     std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it2 = it1 + info_sets_reprs_p[0].size();
+
+        //     io::load_from_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_state.npy"), it1);
+        // }
+
+        // static void load_state_from_file(const std::string &name, ) {
+        //     precompute_if_needed();
+
+        //     assert(average_policy.size() == NUM_INFO_SETS);
+
+        //     std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it = average_policy.begin();
+
+        //     io::load_from_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_state.npy"), it);
+        // }
+
+    private:
+
+        static void precompute_if_needed() {
+            if(precomputed)
+                return;
+            precompute();
+            precomputed = true;
+        }
+        
+        static std::vector<PTTT_Infoset> info_sets_reprs_p[2];
+        static std::map<PTTT_Infoset, int> info_set_to_idx[2];
 
         // todo later add the ability to load from the last checkpoint...
         // warmstart the regret minimizers...
@@ -155,8 +226,8 @@ namespace pttt {
     bool Game::precomputed = false;
 #endif
 
-    std::vector<std::string> Game::info_sets_reprs_p[Game::NUM_PLAYERS] = {{}, {}};
-    std::map<std::string, int> Game::info_set_to_idx[Game::NUM_PLAYERS] = {{}, {}};
+    std::vector<PTTT_Infoset> Game::info_sets_reprs_p[Game::NUM_PLAYERS] = {{}, {}};
+    std::map<PTTT_Infoset, int> Game::info_set_to_idx[Game::NUM_PLAYERS] = {{}, {}};
 
     const std::array<Player, Game::NUM_PLAYERS> Game::players = {Player::P1, Player::P2};
 

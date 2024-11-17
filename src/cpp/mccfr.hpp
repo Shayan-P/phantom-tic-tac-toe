@@ -126,12 +126,23 @@ namespace mccfr {
             }
         }
 
+        void checkpoint(const std::string &name) {
+            Game::save_strategy_to_file(name, average_policy);
+            // todo later save the state of the regret minimizers too
+        }
+
+        void load_from_checkpoint(const std::string &name) {
+            Game::load_strategy_from_file(name, average_policy);
+            // todo later save the state of the regret minimizers too
+        }
+
     private:
         T episode(ComputeMemo &memo, Game &state, Player player, T reach_me=1.0, T reach_other=1.0, T reach_sample=1.0) {
             std::cout << "entering ";
             std::cout << state << std::endl;
 
             if(state.is_terminal()) {
+                std::cout << "terminal " << std::endl;
                 return state.utility(player);
             }
 

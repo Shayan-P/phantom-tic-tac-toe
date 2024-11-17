@@ -144,7 +144,7 @@ namespace pttt
         }
 
         inline bool board_fully_occupied() {
-            return player_occupied[0] | player_occupied[1] == ((1 << NUM_CELLS) - 1);
+            return (player_occupied[0] | player_occupied[1]) == ((1 << NUM_CELLS) - 1);
         }
 
         inline Player current_player() const {

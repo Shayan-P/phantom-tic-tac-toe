@@ -47,6 +47,11 @@ int train_forever() {
     return 0;
 }
 
+#include <iostream>
+#include "xtensor/xarray.hpp"
+#include "xtensor-io/xnpz.hpp"
+
+
 int main() {
     ios_base::sync_with_stdio(0); cin.tie(0); cout.tie(0);
 
@@ -56,9 +61,15 @@ int main() {
     cout << "PRECOMPUTE MODE" << endl;
     #endif
 
-    // Game game;
-    // game.step(0);
-    // game.step(1);
-    // cout << game << endl;
-    train_forever();
+    MCCFR<Game> mccfr;
+
+    mccfr.iteration();
+    mccfr.checkpoint("dum");
+    mccfr.load_from_checkpoint("dum");
+
+    // // Game game;
+    // // game.step(0);
+    // // game.step(1);
+    // // cout << game << endl;
+    // train_forever();
 }
