@@ -31,27 +31,6 @@ using mccfr::MCCFR;
 //     }
 // }
 
-int train_forever() {
-    MCCFR<Game> mccfr;
-
-    while(true) {
-        mccfr.iteration();   
-
-        // todo checkpoint after a bunch of iteratios
-        
-        // todo log and keep track of progress
-
-        // plot? some metric so that we can see this making process
-        // e.g. the nash gap?
-    }
-    return 0;
-}
-
-#include <iostream>
-#include "xtensor/xarray.hpp"
-#include "xtensor-io/xnpz.hpp"
-
-
 int main() {
     ios_base::sync_with_stdio(0); cin.tie(0); cout.tie(0);
 
@@ -63,9 +42,29 @@ int main() {
 
     MCCFR<Game> mccfr;    
 
-    // // Game game;
-    // // game.step(0);
-    // // game.step(1);
-    // // cout << game << endl;
-    // train_forever();
+    auto start = chrono::steady_clock::now();
+    auto last_checkpoint = start;
+
+    while(true) {
+        mccfr.iteration();   
+
+        auto now = chrono::steady_clock::now();
+        auto elapsed = chrono::duration_cast<chrono::hours>(now - last_checkpoint).count();
+
+        if (elapsed >= 1) {
+            time_t t = time(nullptr);
+            tm* timePtr = localtime(&t);
+            char buffer[80];
+            strftime(buffer, sizeof(buffer), "checkpoint__%m_%d_%Y_%H_%M_%S", timePtr);
+            mccfr.save_checkpoint(buffer);
+            last_checkpoint = now;
+        }
+
+        // todo checkpoint after a bunch of iterations
+        
+        // todo log and keep track of progress
+
+        // plot? some metric so that we can see this making process
+        // e.g. the nash gap?
+    }
 }
