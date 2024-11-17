@@ -112,7 +112,7 @@ namespace pttt
             return obs_player[PlayerIdx(player)];
         }
 
-        bool step(Action action) { // returns whether the player has won
+        bool step(Action action) { // returns whether the move was successful or not
             assert(__builtin_popcount(action) == 1);
             int ctz = __builtin_ctz(action);
             assert(ctz < NUM_CELLS * BITS_PER_CELL);
@@ -125,15 +125,26 @@ namespace pttt
 
             Action changed_player_action = action ^ (CELL_MASK << (cellidx * BITS_PER_CELL));
 
+            bool success;
             if(obs_player[opp_idx] & changed_player_action) {
                 // player finds out that this cell is occupied
                 obs_player[player_idx] |= changed_player_action;
+                success = false;
             } else {
                 obs_player[player_idx] |= action;
                 player_occupied[player_idx] |= (1 << cellidx);
+                success = true;
             }
             cur_player = (cur_player == Player::P1) ? Player::P2 : Player::P1;
-            return win_mask[player_occupied[player_idx]];
+            return success;
+        }
+
+        inline bool has_won(Player player) {
+            return win_mask[player_occupied[PlayerIdx(player)]];
+        }
+
+        inline bool board_fully_occupied() {
+            return player_occupied[0] | player_occupied[1] == ((1 << NUM_CELLS) - 1);
         }
 
         inline Player current_player() const {

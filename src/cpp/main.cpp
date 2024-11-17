@@ -1,3 +1,5 @@
+// #define NO_PRECOMPUTE
+
 #include "pttt.hpp"
 #include "mccfr.hpp"
 
@@ -29,7 +31,7 @@ using mccfr::MCCFR;
 //     }
 // }
 
-int train() {
+int train_forever() {
     MCCFR<Game> mccfr;
 
     while(true) {
@@ -48,19 +50,15 @@ int train() {
 int main() {
     ios_base::sync_with_stdio(0); cin.tie(0); cout.tie(0);
 
-    Game game;
-    cout << game << endl;
-    
-    // for(int i = 0; i < Game::NUM_INFO_SETS; i++) {
-    //     for(int j = 0; j < Game::ACTION_MAX_DIM; j++) {
-    //         buffer[i][j] = 0.0;
-    //     }
-    // }
+    #ifdef NO_PRECOMPUTE
+    cout << "NO_PRECOMPUTE MODE" << endl;
+    #else
+    cout << "PRECOMPUTE MODE" << endl;
+    #endif
 
-    // RegretMinimizer<Game::ACTION_MAX_DIM> regret_minimizers[Game::NUM_INFO_SETS];
-    // std::array<T, Game::ACTION_MAX_DIM> average_policy[Game::NUM_INFO_SETS];
-
-    MCCFR<Game> mccfr;
-
-    mccfr.iteration();
+    // Game game;
+    // game.step(0);
+    // game.step(1);
+    // cout << game << endl;
+    train_forever();
 }
