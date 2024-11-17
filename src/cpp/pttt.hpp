@@ -181,27 +181,18 @@ namespace pttt {
             io::load_from_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_p1.npy"), it2);
         }
 
-        // TODO: later write a function that can load/save the state of regret minimizers...
-        // static void save_state_from_file(const std::string &name, ) {
-        //     precompute_if_needed();
+        // todo later make the type generic
+        template<typename T>
+        static void save_state_from_file(const std::string &name, std::vector<std::array<T, ACTION_MAX_DIM>> &state) {
+            precompute_if_needed();
+            io::save_to_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_state.npy"), state.begin(), state.end());
+        }
 
-        //     assert(average_policy.size() == NUM_INFO_SETS);
+        static void load_state_from_file(const std::string &name, std::vector<std::array<T, ACTION_MAX_DIM>> &state) {
+            precompute_if_needed();
 
-        //     std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it1 = average_policy.begin();
-        //     std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it2 = it1 + info_sets_reprs_p[0].size();
-
-        //     io::load_from_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_state.npy"), it1);
-        // }
-
-        // static void load_state_from_file(const std::string &name, ) {
-        //     precompute_if_needed();
-
-        //     assert(average_policy.size() == NUM_INFO_SETS);
-
-        //     std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it = average_policy.begin();
-
-        //     io::load_from_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_state.npy"), it);
-        // }
+            io::load_from_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_state.npy"), state.begin());
+        }
 
     private:
 

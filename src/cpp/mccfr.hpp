@@ -14,7 +14,9 @@ namespace mccfr {
         using Utility = std::array<T, MAX_DIM>;
         using Policy = std::array<T, MAX_DIM>;
 
-        T regret[MAX_DIM];
+    public:
+        T regret[MAX_DIM]; // todo: made this public so that we can load and save from file but later replace with friend functions
+    private:
         int dim = -1;
     public:
         void set_dim(int dim_) {
@@ -126,14 +128,33 @@ namespace mccfr {
             }
         }
 
-        void checkpoint(const std::string &name) {
+        void save_checkpoint(const std::string &name) {
             Game::save_strategy_to_file(name, average_policy);
-            // todo later save the state of the regret minimizers too
+
+            std::vector<std::array<T, Game::ACTION_MAX_DIM>> regret_minimizers_data;
+            regret_minimizers_data.reserve(Game::NUM_INFO_SETS);
+            regret_minimizers_data.resize(Game::NUM_INFO_SETS);
+            for(int i = 0; i < Game::NUM_INFO_SETS; i++) {
+                for(int j = 0; j < Game::ACTION_MAX_DIM; j++) {
+                    regret_minimizers_data[i][j] = regret_minimizers[i].regret[j];
+                }
+            }
+            Game::save_state_from_file(name, regret_minimizers_data);
         }
 
         void load_from_checkpoint(const std::string &name) {
             Game::load_strategy_from_file(name, average_policy);
-            // todo later save the state of the regret minimizers too
+
+            std::vector<std::array<T, Game::ACTION_MAX_DIM>> regret_minimizers_data;
+            regret_minimizers_data.reserve(Game::NUM_INFO_SETS);
+            regret_minimizers_data.resize(Game::NUM_INFO_SETS);
+            Game::load_state_from_file(name, regret_minimizers_data);
+
+            for(int i = 0; i < Game::NUM_INFO_SETS; i++) {
+                for(int j = 0; j < Game::ACTION_MAX_DIM; j++) {
+                    regret_minimizers[i].regret[j] = regret_minimizers_data[i][j];
+                }
+            }
         }
 
     private:

@@ -61,11 +61,7 @@ int main() {
     cout << "PRECOMPUTE MODE" << endl;
     #endif
 
-    MCCFR<Game> mccfr;
-
-    mccfr.iteration();
-    mccfr.checkpoint("dum");
-    mccfr.load_from_checkpoint("dum");
+    MCCFR<Game> mccfr;    
 
     // // Game game;
     // // game.step(0);
