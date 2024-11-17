@@ -159,11 +159,11 @@ namespace mccfr {
 
     private:
         T episode(ComputeMemo &memo, Game &state, Player player, T reach_me=1.0, T reach_other=1.0, T reach_sample=1.0) {
-            std::cout << "entering ";
-            std::cout << state << std::endl;
+            // std::cout << "entering ";
+            // std::cout << state << std::endl;
 
             if(state.is_terminal()) {
-                std::cout << "terminal " << std::endl;
+                // std::cout << "terminal " << std::endl;
                 return state.utility(player);
             }
 

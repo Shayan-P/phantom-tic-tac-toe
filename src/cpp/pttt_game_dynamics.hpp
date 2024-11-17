@@ -118,8 +118,8 @@ namespace pttt
             assert(ctz < NUM_CELLS * BITS_PER_CELL);
             int cellidx = ctz / BITS_PER_CELL;
             int player_idx = ctz % BITS_PER_CELL;
-            std::cout << player_idx << " " << PlayerIdx(cur_player) << std::endl;
-            printf("%b\n", action);
+            // std::cout << player_idx << " " << PlayerIdx(cur_player) << std::endl;
+            // printf("%b\n", action);
             assert(PlayerIdx(cur_player) == player_idx);
             int opp_idx = 1 - player_idx;
 

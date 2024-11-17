@@ -108,10 +108,10 @@ namespace pttt {
             auto player = game_.current_player();
             auto idx = PlayerIdx(player);
             auto it = info_set_to_idx[idx].find(info_set_repr[idx]);
-            std::cout << idx << std::endl;
-            std::cout << info_set_repr[idx].first << std::endl;
-            std::cout << info_set_repr[1-idx].first << std::endl;
-            std::cout << game_ << std::endl;
+            // std::cout << idx << std::endl;
+            // std::cout << info_set_repr[idx].first << std::endl;
+            // std::cout << info_set_repr[1-idx].first << std::endl;
+            // std::cout << game_ << std::endl;
             assert(it != info_set_to_idx[idx].end());
             return it->second;
         }
