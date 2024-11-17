@@ -1,0 +1,13 @@
+.vscode
+**/.vscode
+
+**/player0-infoset.txt
+**/player1-infoset.txt
+
+__MACOSX
+
+questions
+
+__pycache__
+
+**/build

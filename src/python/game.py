@@ -2,8 +2,8 @@ import numpy as np
 import typing as t
 import matplotlib.pyplot as plt
 
-from game_description import GameDescriptor, NodeDescriptor, ChanceNodeDescriptor, DecisionNodeDescriptor, TerminalNodeDescriptor, Action, Player
-from regret_minimizer import RegretMatchingPlus, ListActionSpace, MultiplicativeWeightUpdates
+from game_description import GameDescriptor, NodeDescriptor, ChanceNodeDescriptor, DecisionNodeDescriptor, TerminalNodeDescriptor, Action, Player, History
+from regret_minimizer import RegretMatchingPlus, RegretMatching, ListActionSpace, MultiplicativeWeightUpdates
 from dataclasses import dataclass
 from abc import abstractmethod
 
@@ -16,9 +16,26 @@ class GameNode:
         self.next: t.Dict[Action, GameNode] = dict()
         self.last_action: Action = None
 
+    def is_terminal(self):
+        return isinstance(self.node_desc, TerminalNodeDescriptor)
+    
+    def is_chance(self):
+        return isinstance(self.node_desc, ChanceNodeDescriptor)
+    
+    def is_decision(self):
+        return isinstance(self.node_desc, DecisionNodeDescriptor)
+    
     @property
     def children(self):
         return list(self.next.values())
+
+
+class GameInfoSet:
+    def __init__(self, nodes: t.List[GameNode], player: Player, actions: t.List[Action]):
+        self.actions = actions
+        self.nodes = nodes
+        self.player = player
+
 
 class GameTree:
     def __init__(self, game_descriptor: GameDescriptor):
@@ -27,7 +44,6 @@ class GameTree:
         self.nodes: t.List[GameNode] = []
         self.init_rec(cur_node=self.root)
         self.chance_strat_behavioral = self.get_chance_strategy_behavioral()
-
         self.history_to_node = dict()
         self.history_to_info_set_idx = dict()
         for node in self.nodes:
@@ -35,6 +51,14 @@ class GameTree:
         for info_idx, info_set in enumerate(self.game_descriptor.info_sets):
             for hist in info_set.nodes:
                 self.history_to_info_set_idx[hist] = info_idx
+        self.info_sets: t.List[GameInfoSet] = [
+            GameInfoSet(
+                nodes=[self.history_to_node[hist] for hist in infoset.nodes],
+                player=self.history_to_node[next(iter(infoset.nodes))].node_desc.player,
+                actions=list(self.history_to_node[next(iter(infoset.nodes))].node_desc.actions)
+            )
+            for infoset in game_descriptor.info_sets
+        ]
 
     def init_rec(self, cur_node: GameNode, parent_node: t.Optional[GameNode]=None):
         # initialize node
@@ -316,7 +340,8 @@ class CFR:
                 for a, p in zip(actions, dist):
                     strat[tnode.next[a].idx] = p
         self.last_strat = strat.copy()
-        return self.treeplex.treeplex_strat_to_behavioral_game_strat(strat)
+        strat = self.treeplex.treeplex_strat_to_behavioral_game_strat(strat)
+        return strat
 
     def improve(self, other_strategies: t.Dict[Player, np.ndarray]):
         u = self.treeplex.utility_for_strats(other_strategies)
@@ -327,25 +352,197 @@ class CFR:
                 rms = self.rms[tnode.idx]
                 rms.observe_utility([
                     v[tnode.next[a].idx]
-                    for a in rms.action_space.actions 
+                    for a in rms.action_space.actions
                 ])
             else:
                 v[tnode.idx] = u[tnode.idx] + sum(v[child.idx] for child in tnode.children)
 
 
-
-
+# This does not work. I was trying not to use treeplex and implement CFR and make sure the two versions match...
 class MCCFR:
     def __init__(self, treeplex: Treeplex):
-        self.treeplex = treeplex
-        self.rms: t.Dict[int, RegretMatchingPlus] = dict()
-        for tnode in self.treeplex.treeplex_nodes:
-            if isinstance(tnode, DecisionTreeplexNode):
-                self.rms[tnode.idx] = RegretMatchingPlus(ListActionSpace(list(tnode.actions)))
-        self.last_strat = None
+        self.game_tree: GameTree = treeplex.game_tree
+        self.player = treeplex.player
+        self.rms = dict() # map info set idx to rms
+        for idx, infoset in enumerate(self.game_tree.info_sets):
+            if infoset.player == self.player:
+                self.rms[idx] = RegretMatching(ListActionSpace(infoset.actions))
+        self.last_strat = None # behavioral probablities
 
     def next_strategy_behavioral(self):
-        raise NotImplementedError
+        strat = self.game_tree.get_empty_prop()
+        strat[:] = 1
+        for idx, rms in self.rms.items():
+            rms: RegretMatching = rms
+            dist = rms.next_strategy()
+            for node in self.game_tree.info_sets[idx].nodes:
+                node: GameNode = node
+                for aid, action in enumerate(rms.action_space.actions):
+                    strat[node.next[action].idx] = dist[aid]
+        self.last_strat = strat
+        return strat
 
     def improve(self, other_strategies: t.Dict[Player, np.ndarray]):
-        raise NotImplementedError
+        self.improve_dfs(self.game_tree.root, other_strategies)
+        for rms in self.rms.values():
+            rms: RegretMatching = rms
+            rms.flush_observe_utility()
+
+    def improve_dfs(self, node: GameNode, other_strategies, pflow_others=1):
+        if isinstance(node.node_desc, TerminalNodeDescriptor):
+            return node.node_desc.payoffs[self.player]
+        if isinstance(node.node_desc, ChanceNodeDescriptor):
+            res = 0
+            for action, prob in node.node_desc.actions.items():
+                res += prob * self.improve_dfs(node.next[action], other_strategies, pflow_others*prob)
+            return res
+        if isinstance(node.node_desc, DecisionNodeDescriptor):
+            if node.node_desc.player == self.player:
+                feedback = dict()
+                vals = []
+                for action in node.node_desc.actions:
+                    v = self.improve_dfs(node.next[action], other_strategies, pflow_others)
+                    vals.append(v * self.last_strat[node.next[action].idx])
+                    feedback[action] = pflow_others * v
+                rms: RegretMatching = self.rms[self.game_tree.history_to_info_set_idx[node.node_desc.history]]
+                rms.accumulate_regret([feedback[action] for action in rms.action_space.actions])
+                return sum(vals)
+            else:
+                res = 0
+                for action in node.node_desc.actions:
+                    prob = other_strategies[node.node_desc.player][node.next[action].idx]
+                    res += prob * self.improve_dfs(node.next[action], other_strategies, pflow_others*prob)
+                return res
+
+        
+
+# class MCCFR:
+#     def __init__(self, treeplex: Treeplex):
+#         self.game_tree: GameTree = treeplex.game_tree
+#         self.player = treeplex.player
+#         self.rms = dict() # map info set idx to rms
+#         for idx, infoset in enumerate(self.game_tree.info_sets):
+#             if infoset.player == self.player:
+#                 self.rms[idx] = RegretMatching(ListActionSpace(infoset.actions))
+#         self.last_strat = None # behavioral probablities
+
+#     def next_strategy_behavioral(self):
+#         strat = self.game_tree.get_empty_prop()
+#         strat[:] = 1
+#         for idx, rms in self.rms.items():
+#             rms: RegretMatching = rms
+#             dist = rms.next_strategy()
+#             # print("dist=", dist)
+#             # print(rms.regret_sum)
+#             for node in self.game_tree.info_sets[idx].nodes:
+#                 node: GameNode = node
+#                 for aid, action in enumerate(rms.action_space.actions):
+#                     strat[node.next[action].idx] = dist[aid]
+#         self.last_strat = strat
+#         return strat
+
+#     def improve(self, other_strategies: t.Dict[Player, np.ndarray]):
+#         me = self.improve_sample(self.game_tree.root, other_strategies)
+#         # for i in range(1000):
+#         #     self.improve_sample(self.game_tree.root, other_strategies)
+#         for rms in self.rms.values():
+#             rms.flush_observe_utility()
+
+#     def improve_sample(self, node: GameNode, other_strategies: t.Dict[Player, np.ndarray], reach_probability_others=1, reach_probability_me=1):
+#         if isinstance(node.node_desc, TerminalNodeDescriptor):
+#             res = node.node_desc.payoffs[self.player] * reach_probability_others # / (reach_probability_me * reach_probability_others)
+#             VALUE_DEBUG_MCCFR[node.node_desc.history] = res
+#             return res
+#         if isinstance(node.node_desc, ChanceNodeDescriptor):
+#             actions = list(node.node_desc.actions.keys())
+#             sampled_prob = list(node.node_desc.actions.values())
+#             sampled_prob = np.array(sampled_prob)
+#             sampled_prob /= sampled_prob.sum()
+#             res = 0
+#             for aidx in range(len(actions)):
+#                 action = actions[aidx]
+#                 p = sampled_prob[aidx]
+#                 res += self.improve_sample(node.next[action], other_strategies, reach_probability_others * p, reach_probability_me)
+#             VALUE_DEBUG_MCCFR[node.node_desc.history] = res
+#             return res
+
+#         if isinstance(node.node_desc, DecisionNodeDescriptor):
+#             if node.node_desc.player == self.player:
+#                 info_idx = self.game_tree.history_to_info_set_idx[node.node_desc.history]
+#                 assert(self.game_tree.info_sets[info_idx].player == self.player)
+#                 rms: RegretMatching = self.rms[info_idx]
+#                 actions = rms.action_space.actions
+
+#                 sampled_prob = [self.last_strat[node.next[a].idx] for a in actions]
+#                 sampled_prob = np.array(sampled_prob)
+#                 sampled_prob /= sampled_prob.sum()
+
+#                 res = 0
+#                 vals = []
+#                 for sample_action_idx in range(len(actions)):
+#                     sampled_action = actions[sample_action_idx]
+#                     p = sampled_prob[sample_action_idx]
+#                     val = p * self.improve_sample(node.next[sampled_action], other_strategies, reach_probability_others, reach_probability_me * p)
+#                     vals.append(val)
+#                 res += sum(vals)
+#                 rms.accumulate_regret([
+#                     val
+#                     for val in vals
+#                 ])
+#                 VALUE_DEBUG_MCCFR[node.node_desc.history] = res
+#                 return res
+#             else:
+#                 actions = list(node.node_desc.actions)
+#                 sampled_prob = [other_strategies[node.node_desc.player][node.next[a].idx] for a in actions]
+#                 sampled_prob = np.array(sampled_prob)
+#                 sampled_prob /= sampled_prob.sum()
+#                 res = 0
+#                 for aidx in range(len(actions)):
+#                     action = actions[aidx]
+#                     p = sampled_prob[aidx]
+#                     res += self.improve_sample(node.next[action], other_strategies, reach_probability_others * p, reach_probability_me)
+#                 VALUE_DEBUG_MCCFR[node.node_desc.history] = res
+#                 return res
+            
+#         # if isinstance(node.node_desc, TerminalNodeDescriptor):
+#         #     return node.node_desc.payoffs[self.player] / (reach_probability_me * reach_probability_others)
+#         # if isinstance(node.node_desc, ChanceNodeDescriptor):
+#         #     actions = list(node.node_desc.actions.keys())
+#         #     sampled_prob = list(node.node_desc.actions.values())
+#         #     sampled_prob = np.array(sampled_prob)
+#         #     sampled_prob /= sampled_prob.sum()
+#         #     aidx = np.random.choice(range(len(actions)), p=sampled_prob)
+#         #     action = actions[aidx]
+#         #     p = sampled_prob[aidx]
+#         #     return p * self.improve_sample(node.next[action], other_strategies, reach_probability_others * p, reach_probability_me)
+
+#         # if isinstance(node.node_desc, DecisionNodeDescriptor):
+#         #     if node.node_desc.player == self.player:
+#         #         info_idx = self.game_tree.history_to_info_set_idx[node.node_desc.history]
+#         #         assert(self.game_tree.info_sets[info_idx].player == self.player)
+#         #         rms: RegretMatching = self.rms[info_idx]
+#         #         actions = rms.action_space.actions
+
+#         #         sampled_prob = [self.last_strat[node.next[a].idx] for a in actions]
+#         #         sampled_prob = np.array(sampled_prob)
+#         #         sampled_prob /= sampled_prob.sum()
+
+#         #         sample_action_idx = np.random.choice(range(len(actions)), p=sampled_prob)
+#         #         sampled_action = actions[sample_action_idx]
+#         #         p = sampled_prob[sample_action_idx]
+
+#         #         val = self.improve_sample(node.next[sampled_action], other_strategies, reach_probability_others, reach_probability_me * p)
+#         #         rms.observe_utility([
+#         #             val * reach_probability_others if a == sampled_action else 0
+#         #             for a in rms.action_space.actions 
+#         #         ])
+#         #         return p * val
+#         #     else:
+#         #         actions = list(node.node_desc.actions)
+#         #         sampled_prob = [other_strategies[node.node_desc.player][node.next[a].idx] for a in actions]
+#         #         sampled_prob = np.array(sampled_prob)
+#         #         sampled_prob /= sampled_prob.sum()
+#         #         aidx = np.random.choice(range(len(actions)), p=sampled_prob)
+#         #         action = actions[aidx]
+#         #         p = sampled_prob[aidx]
+#         #         return p * self.improve_sample(node.next[action], other_strategies, reach_probability_others * p, reach_probability_me)

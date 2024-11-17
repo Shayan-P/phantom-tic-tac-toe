@@ -76,7 +76,16 @@ class RegretMatching(RegretMinimizer):
         super().__init__(action_space)
         self.regret_sum = np.zeros(action_space.dim)
         self.prev_strat: Strategy = None
+        self.acc_reg = np.zeros(self.action_space.dim)
 
+    def accumulate_regret(self, g: UtilityVec):
+        self.acc_reg += g
+
+    def flush_observe_utility(self):
+        assert self.prev_strat is not None
+        self.regret_sum += self.acc_reg - (self.prev_strat @ self.acc_reg)
+        self.acc_reg[:] = 0
+        
     def observe_utility(self, g: UtilityVec):
         assert self.prev_strat is not None
         self.regret_sum += g - (self.prev_strat @ g)
@@ -84,7 +93,8 @@ class RegretMatching(RegretMinimizer):
     def next_strategy(self) -> Strategy:
         probs = relu(self.regret_sum)
         if probs.sum() == 0:
-            probs = np.random.rand(self.action_space.dim)
+            probs = np.ones(self.action_space.dim)
+            # probs = np.random.rand(self.action_space.dim)
         self.prev_strat = probs / probs.sum()
         return self.prev_strat
 
@@ -102,7 +112,8 @@ class RegretMatchingPlus(RegretMinimizer):
     def next_strategy(self) -> Strategy:
         probs = relu(self.regret_sum)
         if probs.sum() == 0:
-            probs = np.random.rand(self.action_space.dim)
+            # probs = np.random.rand(self.action_space.dim)
+            probs = np.ones(self.action_space.dim)
         self.prev_strat = probs / probs.sum()
         return self.prev_strat
 
