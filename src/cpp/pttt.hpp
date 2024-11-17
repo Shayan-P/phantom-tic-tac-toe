@@ -17,6 +17,9 @@ namespace pttt {
     using PTTT_Infoset = std::pair<std::string, uint32_t>; // name, valid mask
 
     class Game {
+    public:
+        using Player = pttt::Player;
+    private:
         GameDynamics game_;
         bool done = false;
         Player winner;
@@ -33,7 +36,6 @@ namespace pttt {
         using Buffer = std::array<T, ACTION_MAX_DIM>;
         using BufferInt = std::array<int, ACTION_MAX_DIM>;
         static const std::array<Player, NUM_PLAYERS> players;
-        using Player = pttt::Player;
 
         Game() {
             precompute_if_needed();
