@@ -1,7 +1,7 @@
-#include "phantom_ttt.hpp"
+#include "pttt.hpp"
 #include "mccfr.hpp"
 
-using phantom_ttt::Game;
+using pttt::Game;
 using namespace std;
 using mccfr::MCCFR;
 
@@ -29,9 +29,7 @@ using mccfr::MCCFR;
 //     }
 // }
 
-int main() {
-    ios_base::sync_with_stdio(0); cin.tie(0); cout.tie(0);
-
+int train() {
     MCCFR<Game> mccfr;
 
     while(true) {
@@ -45,4 +43,24 @@ int main() {
         // e.g. the nash gap?
     }
     return 0;
+}
+
+int main() {
+    ios_base::sync_with_stdio(0); cin.tie(0); cout.tie(0);
+
+    Game game;
+    cout << game << endl;
+    
+    // for(int i = 0; i < Game::NUM_INFO_SETS; i++) {
+    //     for(int j = 0; j < Game::ACTION_MAX_DIM; j++) {
+    //         buffer[i][j] = 0.0;
+    //     }
+    // }
+
+    // RegretMinimizer<Game::ACTION_MAX_DIM> regret_minimizers[Game::NUM_INFO_SETS];
+    // std::array<T, Game::ACTION_MAX_DIM> average_policy[Game::NUM_INFO_SETS];
+
+    MCCFR<Game> mccfr;
+
+    mccfr.iteration();
 }

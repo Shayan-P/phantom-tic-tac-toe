@@ -34,7 +34,14 @@ namespace io {
         std::cout << "writing to file " << filename << std::endl;
 
         for(auto it = itl; it != itr; ++it) {
-            file << std::fixed << std::setprecision(12) << (*it) << "\n"; // adjust the precision
+            const auto& arr = *it;
+            for (size_t i = 0; i < arr.size(); ++i) {
+                file << arr[i];
+                if (i < arr.size() - 1) {
+                    file << " "; // separate elements with a space
+                }
+            }
+            file << "\n"; // new line after each array
         }
 
         std::cout << "done " << filename << std::endl;
