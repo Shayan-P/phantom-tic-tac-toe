@@ -24,7 +24,7 @@ namespace pttt {
         bool done = false;
         Player winner;
         bool tie = false;
-        PTTT_Infoset info_set_repr[2] = {PTTT_Infoset("|", 0), PTTT_Infoset("|", 0)}; // todo later we can replace this with a better representation...
+        PTTT_Infoset info_set_repr[2] = {PTTT_Infoset("|", (1<<PTTT_NUM_ACTIONS)-1), PTTT_Infoset("|", (1<<PTTT_NUM_ACTIONS)-1)}; // todo later we can replace this with a better representation...
 
     public:
         static constexpr int ACTION_MAX_DIM = 9;
@@ -34,7 +34,7 @@ namespace pttt {
         using T = double;
         // using Player = pttt::Player;
         using Buffer = std::array<T, ACTION_MAX_DIM>;
-        using BufferInt = std::array<int, ACTION_MAX_DIM>;
+        using ActionInts = std::array<ActionInt, ACTION_MAX_DIM>;
         static const std::array<Player, NUM_PLAYERS> players;
 
         Game() {
@@ -85,10 +85,10 @@ namespace pttt {
             char succ = succ_move ? '*' : '.';
             info_set_repr[PlayerIdx(cur_player)].first += cell;
             info_set_repr[PlayerIdx(cur_player)].first += succ;
-            info_set_repr[PlayerIdx(cur_player)].second |= 1 << action_;
+            info_set_repr[PlayerIdx(cur_player)].second &= ~(1 << action_);
         }
 
-        void actions(BufferInt &buffer) { // don't use vector or dynamic memory
+        void actions(ActionInts &buffer) { // don't use vector or dynamic memory
             Player player = game_.current_player();
             Actions mask = valid_action_mask(player, game_.player_observation(player));
             int cnt = 0;
@@ -119,9 +119,31 @@ namespace pttt {
         friend std::ostream& operator<<(std::ostream& os, const Game& game);
 
     private:
+
+        static void load_information_sets(const std::string &filename, std::vector<PTTT_Infoset> &info_sets_reprs) {
+            std::ifstream file(filename);
+            if (!file.is_open()) {
+                throw std::runtime_error("Could not open file " + filename);
+            }
+            std::cout << "reading from file " << filename << std::endl;
+            std::string line;
+            while (std::getline(file, line)) {
+                assert(line[0] == '|');
+                assert(line.back() == '|' || line.back() == '.' || line.back() == '*');
+                uint32_t mask = 0;
+                for (size_t idx = 1; idx < line.size() - 1; idx += 2) {
+                    mask |= 1 << (line[idx] - '0');
+                }
+                mask = ((1<<PTTT_NUM_ACTIONS)-1) ^ mask; // invert the mask to keep the valid ones...
+                info_sets_reprs.push_back({line, mask});
+            }
+            file.close();
+            std::cout << "done " << filename << std::endl;
+        }
+
         static void precompute() {
-            io::load_information_sets(pttt::get_player0_infoset_path(), info_sets_reprs_p[0]);
-            io::load_information_sets(pttt::get_player1_infoset_path(), info_sets_reprs_p[1]);
+            load_information_sets(pttt::get_player0_infoset_path(), info_sets_reprs_p[0]);
+            load_information_sets(pttt::get_player1_infoset_path(), info_sets_reprs_p[1]);
 
             for(int i = 0; i < info_sets_reprs_p[0].size(); i++) {
                 info_set_to_idx[0][info_sets_reprs_p[0][i]] = i;

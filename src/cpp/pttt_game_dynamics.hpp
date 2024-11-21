@@ -9,6 +9,7 @@
 namespace pttt
 {
     #define GRID_SIZE 3
+    constexpr int PTTT_NUM_ACTIONS = 9; // todo later change the rest to constexpr too...
     #define CELL(player, x, y) ((player) << (BITS_PER_CELL * (x * GRID_SIZE + y)))
     #define BITS_PER_CELL    2
     #define NUM_CELLS        (GRID_SIZE * GRID_SIZE)
@@ -18,7 +19,6 @@ namespace pttt
     #define CELL_P2          0b10
     #define ALL_P1           0b010101010101010101
     #define ALL_P2           0b101010101010101010
-
     enum Player { P1, P2 };
 
     #define OtherPlayer(player) (player == Player::P1 ? Player::P2 : Player::P1)

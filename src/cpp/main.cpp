@@ -44,12 +44,22 @@ int main() {
 
     auto start = chrono::steady_clock::now();
     auto last_checkpoint = start;
-
+    auto elapsed_since_start_prev = -1;
+    int iters = 0;
+    
     while(true) {
         mccfr.iteration();   
+        iters++;
 
         auto now = chrono::steady_clock::now();
         auto elapsed = chrono::duration_cast<chrono::hours>(now - last_checkpoint).count();
+        auto elapsed_since_start = chrono::duration_cast<chrono::minutes>(now - last_checkpoint).count();
+
+        if(elapsed_since_start != elapsed_since_start_prev) {
+            cout << "Elapsed time: " << elapsed_since_start << " minutes" << endl;
+            cout << iters << " iterations" << endl;
+            elapsed_since_start_prev = elapsed_since_start;
+        }
 
         if (elapsed >= 1) {
             time_t t = time(nullptr);
@@ -57,6 +67,7 @@ int main() {
             char buffer[80];
             strftime(buffer, sizeof(buffer), "checkpoint__%m_%d_%Y_%H_%M_%S", timePtr);
             mccfr.save_checkpoint(buffer);
+            mccfr.save_checkpoint("latest");
             last_checkpoint = now;
         }
 

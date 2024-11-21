@@ -19,10 +19,15 @@ namespace mccfr {
     private:
         int dim = -1;
     public:
+        // note that this is indexed on the action indices and not the actions themselves!
+        RegretMinimizer() {
+            memset(regret, 0, sizeof(regret));
+        }
+
         void set_dim(int dim_) {
             assert(dim == -1 || dim == dim_);
             dim = dim_;
-            memset(regret, 0, sizeof(regret));
+            // memset(regret, 0, sizeof(regret)); // otherwise we override the saved version...
         }
 
         void observe_utility(const Utility& utility, const Policy &last_policy) {
@@ -60,21 +65,19 @@ namespace mccfr {
 
         static constexpr T EXPLORATION = 0.6;
 
+        // regret minimizers are saved in action index space
+        // average policy is saved in **action** space
         std::vector<RegretMinimizer<Game::ACTION_MAX_DIM>> regret_minimizers; // size Game::NUM_INFO_SETS
         std::vector<std::array<T, Game::ACTION_MAX_DIM>> average_policy; // size Game::NUM_INFO_SETS
 
+        using Buffer = std::array<T, Game::ACTION_MAX_DIM>;
+        using BufferInt = std::array<int, Game::ACTION_MAX_DIM>;
+
+        // compute memo is a scratch pad for the computation that needs to happen in each node...
         struct ComputeMemo {
-            int size;
-
-            using Buffer = std::array<T, Game::ACTION_MAX_DIM>;
-            using BufferInt = std::array<int, Game::ACTION_MAX_DIM>;
-
-            Buffer policy;
-            Buffer sample_policy;
             Buffer utility;
-            BufferInt actions;
 
-            int sample(Buffer &probs) {
+            int sample_index(Buffer &probs, int size) {
                 T sum = 0;
                 for (int i = 0; i < size; i++) {
                     sum += probs[i];
@@ -167,15 +170,24 @@ namespace mccfr {
                 return state.utility(player);
             }
 
+            // memory creation
+            Buffer policy;
+            Buffer sample_policy;
+            BufferInt actions;
+            // end memo creation
+
             int num_actions = state.num_actions();
-            memo.size = state.num_actions();
+            state.actions(actions);
+
+
 
             if(state.is_chance()) {
                 // state should also carry a dynamic memory so that we can do this calculations on the fly without the need to allocate dynamic memory
-                state.action_probs(memo.policy);
-                int action_idx = memo.sample(memo.policy);
-                auto p = memo.policy[action_idx];
-                state.step(memo.actions[action_idx]);
+                state.action_probs(policy);
+                int action_idx = memo.sample_index(policy, num_actions);
+                auto p = policy[action_idx];
+                // be careful that after stepping the memo is changed because it is shared...
+                state.step(actions[action_idx]);
                 return episode(memo, state, player, reach_me, reach_other * p, reach_sample * p);
             }
 
@@ -183,29 +195,30 @@ namespace mccfr {
             int info_set_idx = state.info_set_idx();
             // later put locks here if we are doing parallelism
             regret_minimizers[info_set_idx].set_dim(num_actions); // sets the dimension if you are visiting the regret minimizer for the first time
-            regret_minimizers[info_set_idx].next_policy(memo.policy); // gets the policy
+            regret_minimizers[info_set_idx].next_policy(policy); // gets the policy
 
             if(cur_player == player) {
                 for(int i = 0; i < num_actions; i++) {
-                    memo.sample_policy[i] = EXPLORATION / num_actions + (1.0 - EXPLORATION) * memo.policy[i];
+                    sample_policy[i] = EXPLORATION / num_actions + (1.0 - EXPLORATION) * policy[i];
                 } // exploration + policy
             } else {
                 for(int i = 0; i < num_actions; i++) {
-                    memo.sample_policy[i] = memo.policy[i];
+                    sample_policy[i] = policy[i];
                 }
             }
 
-            state.actions(memo.actions);
-            int action_idx = memo.sample(memo.sample_policy);
-            state.step(memo.actions[action_idx]);
+            int action_idx = memo.sample_index(sample_policy, num_actions);
 
-            double new_reach_me = reach_me;
-            double new_reach_other = reach_other;
-            double new_reach_sample = reach_sample * memo.sample_policy[action_idx];
+            // be careful that after stepping the memo is changed because it is shared...
+            state.step(actions[action_idx]);
+
+            T new_reach_me = reach_me;
+            T new_reach_other = reach_other;
+            T new_reach_sample = reach_sample * sample_policy[action_idx];
             if(cur_player == player) {
-                new_reach_me *= memo.policy[action_idx];
+                new_reach_me *= policy[action_idx];
             } else {
-                new_reach_other *= memo.policy[action_idx];
+                new_reach_other *= policy[action_idx];
             }
 
             auto child_value = episode(memo, state, player, new_reach_me, new_reach_other, new_reach_sample);
@@ -214,22 +227,24 @@ namespace mccfr {
             if(cur_player == player) {
                 for(int i = 0; i < num_actions; i++) {
 
-                    const double baseline = 0; // we can change later to improve the variance
+                    const T baseline = 0; // we can change later to improve the variance
                     T child_value = (
-                        baseline + (child_value - baseline) / memo.sample_policy[action_idx]
+                        baseline + (child_value - baseline) / sample_policy[action_idx]
                         ? action_idx == i
                         : baseline
                     );
                     memo.utility[i] = child_value * reach_other / reach_sample;
-                    value += child_value * memo.policy[i];
+                    value += child_value * policy[i];
                 }
-                regret_minimizers[info_set_idx].observe_utility(memo.utility, memo.policy);
+                regret_minimizers[info_set_idx].observe_utility(memo.utility, policy);
 
                 // update average policy
                 for(int i = 0; i < num_actions; i++) {
                     // why not update with new policy?
-                    T increment = reach_me * memo.policy[i] / reach_sample;
-                    average_policy[info_set_idx][memo.actions[i]] += increment;
+                    T increment = reach_me * policy[i] / reach_sample;
+                    // std::cout << "increment info_idx=" << info_set_idx << " i=" << i << " action=" << actions[i] << " increment=" << increment << std::endl;
+                    // std::cout << "probs " << reach_me << " " << policy[i] << " " << reach_sample << std::endl;
+                    average_policy[info_set_idx][actions[i]] += increment;
                 }
                 // later put locks here if we are doing parallelism
             }
