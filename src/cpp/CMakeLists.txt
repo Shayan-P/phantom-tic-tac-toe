@@ -35,5 +35,7 @@ if(NOT EXISTS ${PLAYER0_INFOSET_PATH})
     )
 endif()
 
-add_executable(pttt main.cpp)
+add_executable(pttt main_pttt.cpp)
+add_executable(rps main_rps.cpp)
 target_link_libraries(pttt xtensor xtensor-io)
+target_link_libraries(rps xtensor xtensor-io)

@@ -63,7 +63,7 @@ namespace pttt
     }
     
     ////////////////////////////////////////////////////////////////
-    class GameDynamics {
+    class PTTTDynamics {
         // todo: later, very simple optimization: consider the symmetry of the board... observation would be the minimum of observation among all symmetries...
         StateObservation obs_player[2] = {0, 0};
         OccupiedMask player_occupied[2] = {0, 0};
@@ -98,7 +98,7 @@ namespace pttt
         }
 
     public:
-        GameDynamics() {
+        PTTTDynamics() {
             if(!precomputed) {
                 precomputed = true;
                 precompute();
@@ -151,12 +151,12 @@ namespace pttt
             return cur_player;
         }
 
-        friend std::ostream& operator<<(std::ostream& os, const GameDynamics& game);
+        friend std::ostream& operator<<(std::ostream& os, const PTTTDynamics& game);
     };
-    bool GameDynamics::precomputed = false;
-    bool GameDynamics::win_mask[(1<<(GRID_SIZE*GRID_SIZE))];    
+    bool PTTTDynamics::precomputed = false;
+    bool PTTTDynamics::win_mask[(1<<(GRID_SIZE*GRID_SIZE))];    
 
-    std::ostream& operator<<(std::ostream& os, const GameDynamics& game) {
+    std::ostream& operator<<(std::ostream& os, const PTTTDynamics& game) {
         os << "Game (Turn=" << (game.cur_player == Player::P1 ? "X" : "O") << ")\n";
         for(int i = 0; i < GRID_SIZE; i++) {
             for(int j = 0; j < GRID_SIZE; j++) {

@@ -5,7 +5,7 @@
 #include <thread>
 #include <atomic>
 
-using pttt::Game;
+using pttt::PTTT;
 using namespace std;
 using mccfr::MCCFR;
 
@@ -42,8 +42,8 @@ int main() {
     cout << "PRECOMPUTE MODE" << endl;
     #endif
 
-    MCCFR<Game> mccfr;    
-    Game::precompute_if_needed(); // do this before starting the threads...
+    MCCFR<PTTT> mccfr;    
+    PTTT::precompute_if_needed(); // do this before starting the threads...
 
     int num_threads = thread::hardware_concurrency();
     cout << "Number of available cores: " << num_threads << endl; // I think this might not be the number of cores you have access to... maybe set this manually?
@@ -83,16 +83,5 @@ int main() {
 
     for (auto& t : threads) {
         t.join();
-    }    
-    
-    // while(true) {
-    //     mccfr.iteration();   
-
-    //     // todo checkpoint after a bunch of iterations
-        
-    //     // todo log and keep track of progress
-
-    //     // plot? some metric so that we can see this making process
-    //     // e.g. the nash gap?
-    // }
+    }
 }

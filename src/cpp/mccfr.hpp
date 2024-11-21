@@ -285,5 +285,19 @@ namespace mccfr {
             }
             return value;
         }
+
+    public:
+        void debug_print() {
+            std::cout << "printing strategies in info sets:" << std::endl;
+            for(int i = 0; i < Game::NUM_INFO_SETS; i++) {
+                std::cout << "info set " << i << std::endl;
+                Buffer policy;
+                regret_minimizers[i].get_average_policy(policy);
+                for(int j = 0; j < Game::ACTION_MAX_DIM; j++) {
+                    std::cout << policy[j] << " ";
+                }
+                std::cout << std::endl;
+            }
+        }
     };
 } // namespace mccfr

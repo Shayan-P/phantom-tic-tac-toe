@@ -16,11 +16,11 @@
 namespace pttt {
     using PTTT_Infoset = std::pair<std::string, uint32_t>; // name, valid mask
 
-    class Game {
+    class PTTT {
     public:
         using Player = pttt::Player;
     private:
-        GameDynamics game_;
+        PTTTDynamics game_;
         bool done = false;
         Player winner;
         bool tie = false;
@@ -37,7 +37,7 @@ namespace pttt {
         using ActionInts = std::array<ActionInt, ACTION_MAX_DIM>;
         static const std::array<Player, NUM_PLAYERS> players;
 
-        Game() {
+        PTTT() {
             precompute_if_needed();
         }
 
@@ -116,7 +116,7 @@ namespace pttt {
             return it->second;
         }
 
-        friend std::ostream& operator<<(std::ostream& os, const Game& game);
+        friend std::ostream& operator<<(std::ostream& os, const PTTT& game);
 
     private:
 
@@ -236,17 +236,17 @@ namespace pttt {
         static bool precomputed;
     };
 #ifdef NO_PRECOMPUTE
-    bool Game::precomputed = true;
+    bool PTTT::precomputed = true;
 #else
-    bool Game::precomputed = false;
+    bool PTTT::precomputed = false;
 #endif
 
-    std::vector<PTTT_Infoset> Game::info_sets_reprs_p[Game::NUM_PLAYERS] = {{}, {}};
-    std::map<PTTT_Infoset, int> Game::info_set_to_idx[Game::NUM_PLAYERS] = {{}, {}};
+    std::vector<PTTT_Infoset> PTTT::info_sets_reprs_p[PTTT::NUM_PLAYERS] = {{}, {}};
+    std::map<PTTT_Infoset, int> PTTT::info_set_to_idx[PTTT::NUM_PLAYERS] = {{}, {}};
 
-    const std::array<Player, Game::NUM_PLAYERS> Game::players = {Player::P1, Player::P2};
+    const std::array<Player, PTTT::NUM_PLAYERS> PTTT::players = {Player::P1, Player::P2};
 
-    std::ostream& operator<<(std::ostream& os, const Game& game) {
+    std::ostream& operator<<(std::ostream& os, const PTTT& game) {
         os << game.game_;
         return os;
     }
