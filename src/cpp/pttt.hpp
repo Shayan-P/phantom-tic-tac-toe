@@ -218,14 +218,14 @@ namespace pttt {
             io::load_from_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_state.npy"), state.begin());
         }
 
-    private:
-
         static void precompute_if_needed() {
             if(precomputed)
                 return;
             precompute();
             precomputed = true;
         }
+
+    private:
         
         static std::vector<PTTT_Infoset> info_sets_reprs_p[2];
         static std::map<PTTT_Infoset, int> info_set_to_idx[2];

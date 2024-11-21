@@ -2,6 +2,8 @@
 
 #include "pttt.hpp"
 #include "mccfr.hpp"
+#include <thread>
+#include <atomic>
 
 using pttt::Game;
 using namespace std;
@@ -41,41 +43,56 @@ int main() {
     #endif
 
     MCCFR<Game> mccfr;    
+    Game::precompute_if_needed(); // do this before starting the threads...
 
-    auto start = chrono::steady_clock::now();
-    auto last_checkpoint = start;
-    auto elapsed_since_start_prev = -1;
-    int iters = 0;
-    
-    while(true) {
-        mccfr.iteration();   
-        iters++;
+    int num_threads = thread::hardware_concurrency();
+    cout << "Number of available cores: " << num_threads << endl; // I think this might not be the number of cores you have access to... maybe set this manually?
 
-        auto now = chrono::steady_clock::now();
-        auto elapsed = chrono::duration_cast<chrono::hours>(now - last_checkpoint).count();
-        auto elapsed_since_start = chrono::duration_cast<chrono::minutes>(now - last_checkpoint).count();
-
-        if(elapsed_since_start != elapsed_since_start_prev) {
-            cout << "Elapsed time: " << elapsed_since_start << " minutes" << endl;
-            cout << iters << " iterations" << endl;
-            elapsed_since_start_prev = elapsed_since_start;
-        }
-
-        if (elapsed >= 1) {
-            time_t t = time(nullptr);
-            tm* timePtr = localtime(&t);
-            char buffer[80];
-            strftime(buffer, sizeof(buffer), "checkpoint__%m_%d_%Y_%H_%M_%S", timePtr);
-            mccfr.save_checkpoint(buffer);
-            mccfr.save_checkpoint("latest");
-            last_checkpoint = now;
-        }
-
-        // todo checkpoint after a bunch of iterations
-        
-        // todo log and keep track of progress
-
-        // plot? some metric so that we can see this making process
-        // e.g. the nash gap?
+    atomic<int> iters(0);
+    vector<thread> threads;
+    for (int i = 0; i < num_threads; ++i) {
+        threads.emplace_back([&mccfr, &iters]() {
+            while (true) {
+                mccfr.iteration();
+                iters++;
+            }
+        });
     }
+
+    threads.emplace_back([&mccfr, &iters]() {
+        // logging thread 
+        auto start = chrono::steady_clock::now();
+        auto last_checkpoint = start;
+        auto elapsed_since_start_prev = -1;
+        int minute_count = 0;
+
+        while (true) {
+            cout << "minute_count=" << minute_count << " iters=" << iters.load() << endl;
+            if(minute_count % 60 == 0) { // every hour
+                time_t t = time(nullptr);
+                tm* timePtr = localtime(&t);
+                char buffer[80];
+                strftime(buffer, sizeof(buffer), "parallel_checkpoint__%m_%d_%Y_%H_%M_%S", timePtr);
+                mccfr.save_checkpoint(buffer);
+                mccfr.save_checkpoint("latest");
+            }
+            minute_count++;
+            this_thread::sleep_for(chrono::minutes(1));
+        }
+    });
+
+    for (auto& t : threads) {
+        t.join();
+    }    
+    
+    // while(true) {
+    //     mccfr.iteration();   
+
+    //     // todo checkpoint after a bunch of iterations
+        
+    //     // todo log and keep track of progress
+
+    //     // plot? some metric so that we can see this making process
+    //     // e.g. the nash gap?
+    // }
 }

@@ -5,23 +5,28 @@
 #include <cstring>
 #include <vector>
 #include <random>
+#include <mutex>
 
 namespace mccfr {
     using T = double;
 
     template<int MAX_DIM>
+
     class RegretMinimizer {
         using Utility = std::array<T, MAX_DIM>;
         using Policy = std::array<T, MAX_DIM>;
 
-    public:
         T regret[MAX_DIM]; // todo: made this public so that we can load and save from file but later replace with friend functions
-    private:
+        T average_policy[MAX_DIM];
+
         int dim = -1;
+        std::mutex mtx_regret, mtx_policy; // mutex for locking
+
     public:
         // note that this is indexed on the action indices and not the actions themselves!
         RegretMinimizer() {
             memset(regret, 0, sizeof(regret));
+            memset(average_policy, 0, sizeof(average_policy));
         }
 
         void set_dim(int dim_) {
@@ -31,6 +36,7 @@ namespace mccfr {
         }
 
         void observe_utility(const Utility& utility, const Policy &last_policy) {
+            std::lock_guard<std::mutex> lock(mtx_regret); // lock the mutex
             T avg = 0;
             for(int i = 0; i < dim; i++) {
                 avg += last_policy[i] * utility[i];
@@ -39,7 +45,9 @@ namespace mccfr {
                 regret[i] += utility[i] - avg;
             }
         }
+
         void next_policy(Policy &policy) {
+            std::lock_guard<std::mutex> lock(mtx_regret); // lock the mutex
             T sum = 0;
             for(int i = 0; i < dim; i++) {
                 policy[i] += std::max(regret[i], 0.0);
@@ -55,7 +63,36 @@ namespace mccfr {
                 policy[i] /= sum;
             }
         }
-    };
+
+        void set_average_policy(const Policy &policy_values) {
+            std::lock_guard<std::mutex> lock(mtx_policy); // lock the mutex
+            for(int i = 0; i < MAX_DIM; i++)
+                average_policy[i] = policy_values[i];
+        }
+
+        void get_average_policy(Policy &policy_values) {
+            std::lock_guard<std::mutex> lock(mtx_policy); // lock the mutex
+            for(int i = 0; i < MAX_DIM; i++)
+                policy_values[i] = average_policy[i];
+        }
+
+        void set_regret(const Utility &regret_values) {
+            std::lock_guard<std::mutex> lock(mtx_regret); // lock the mutex
+            for(int i = 0; i < MAX_DIM; i++)
+                regret[i] = regret_values[i];
+        }
+
+        void get_regret(Utility &regret_values) {
+            std::lock_guard<std::mutex> lock(mtx_regret); // lock the mutex
+            for(int i = 0; i < MAX_DIM; i++)
+                regret_values[i] = regret[i];
+        }
+
+        void increment_avg_policy(int action, T increment) {
+            std::lock_guard<std::mutex> lock(mtx_policy); // lock the mutex
+            average_policy[action] += increment;
+        }
+    };;
 
 ////////////////////////////////////////
 
@@ -68,7 +105,6 @@ namespace mccfr {
         // regret minimizers are saved in action index space
         // average policy is saved in **action** space
         std::vector<RegretMinimizer<Game::ACTION_MAX_DIM>> regret_minimizers; // size Game::NUM_INFO_SETS
-        std::vector<std::array<T, Game::ACTION_MAX_DIM>> average_policy; // size Game::NUM_INFO_SETS
 
         using Buffer = std::array<T, Game::ACTION_MAX_DIM>;
         using BufferInt = std::array<int, Game::ACTION_MAX_DIM>;
@@ -121,42 +157,41 @@ namespace mccfr {
             }
         }
 
-        MCCFR() {
-            regret_minimizers.reserve(Game::NUM_INFO_SETS);
-            average_policy.reserve(Game::NUM_INFO_SETS);
-            regret_minimizers.resize(Game::NUM_INFO_SETS);
-            average_policy.resize(Game::NUM_INFO_SETS);
-            for(auto& policy : average_policy) {
-                policy.fill(0);
-            }
-        }
+        MCCFR(): regret_minimizers(Game::NUM_INFO_SETS) { }
 
         void save_checkpoint(const std::string &name) {
-            Game::save_strategy_to_file(name, average_policy);
+            std::vector<std::array<T, Game::ACTION_MAX_DIM>> average_policy_data;
+            average_policy_data.reserve(Game::NUM_INFO_SETS);
+            average_policy_data.resize(Game::NUM_INFO_SETS);
+            for(int i = 0; i < Game::NUM_INFO_SETS; i++) {
+                regret_minimizers[i].get_average_policy(average_policy_data[i]);
+            }
+            Game::save_strategy_to_file(name, average_policy_data);
 
             std::vector<std::array<T, Game::ACTION_MAX_DIM>> regret_minimizers_data;
             regret_minimizers_data.reserve(Game::NUM_INFO_SETS);
             regret_minimizers_data.resize(Game::NUM_INFO_SETS);
             for(int i = 0; i < Game::NUM_INFO_SETS; i++) {
-                for(int j = 0; j < Game::ACTION_MAX_DIM; j++) {
-                    regret_minimizers_data[i][j] = regret_minimizers[i].regret[j];
-                }
+                regret_minimizers[i].get_regret(regret_minimizers_data[i]);
             }
             Game::save_state_from_file(name, regret_minimizers_data);
         }
 
         void load_from_checkpoint(const std::string &name) {
-            Game::load_strategy_from_file(name, average_policy);
+            std::vector<std::array<T, Game::ACTION_MAX_DIM>> average_policy_data;
+            average_policy_data.reserve(Game::NUM_INFO_SETS);
+            average_policy_data.resize(Game::NUM_INFO_SETS);
+            Game::load_strategy_from_file(name, average_policy_data);
+            for(int i = 0; i < Game::NUM_INFO_SETS; i++) {
+                regret_minimizers[i].set_average_policy(average_policy_data[i]);
+            }
 
             std::vector<std::array<T, Game::ACTION_MAX_DIM>> regret_minimizers_data;
             regret_minimizers_data.reserve(Game::NUM_INFO_SETS);
             regret_minimizers_data.resize(Game::NUM_INFO_SETS);
             Game::load_state_from_file(name, regret_minimizers_data);
-
             for(int i = 0; i < Game::NUM_INFO_SETS; i++) {
-                for(int j = 0; j < Game::ACTION_MAX_DIM; j++) {
-                    regret_minimizers[i].regret[j] = regret_minimizers_data[i][j];
-                }
+                regret_minimizers[i].set_regret(regret_minimizers_data[i]);
             }
         }
 
@@ -244,7 +279,7 @@ namespace mccfr {
                     T increment = reach_me * policy[i] / reach_sample;
                     // std::cout << "increment info_idx=" << info_set_idx << " i=" << i << " action=" << actions[i] << " increment=" << increment << std::endl;
                     // std::cout << "probs " << reach_me << " " << policy[i] << " " << reach_sample << std::endl;
-                    average_policy[info_set_idx][actions[i]] += increment;
+                    regret_minimizers[info_set_idx].increment_avg_policy(actions[i], increment);
                 }
                 // later put locks here if we are doing parallelism
             }
