@@ -68,7 +68,6 @@ namespace rps {
             } else {
                 p2_move = action_;
             }
-
             if(p1_move != -1 && p2_move != -1) {
                 done = true;
                 if(p1_move == p2_move) {
@@ -81,7 +80,7 @@ namespace rps {
             }
         }
 
-        void actions(ActionInts &buffer) { // don't use vector or dynamic memory
+        void actions(ActionInts &buffer) const { // don't use vector or dynamic memory
             buffer[0] = 0;
             buffer[1] = 1;
             buffer[2] = 2;
@@ -100,6 +99,29 @@ namespace rps {
     private:
 
     public:
+        static std::vector<std::array<T, ACTION_MAX_DIM>> get_strategy(const std::vector<std::array<T, ACTION_MAX_DIM>> &average_policy) {
+            std::vector<std::array<T, ACTION_MAX_DIM>> result(NUM_INFO_SETS);
+            for(int idx = 0; idx < NUM_INFO_SETS; idx++) {
+                result[idx] = average_policy[idx];
+                T sm = 0;
+                for(int j = 0; j < ACTION_MAX_DIM; j++) {
+                    sm += average_policy[idx][j];
+                }
+                if (sm <= 1e-9) {
+                    // assign uniform distribution
+                    int num_valid_actions = ACTION_MAX_DIM;
+                    sm = num_valid_actions;
+                    for(int j = 0; j < ACTION_MAX_DIM; j++) {
+                        result[idx][j] = 1.0;
+                    }
+                }
+                for(int j = 0; j < ACTION_MAX_DIM; j++) {
+                    result[idx][j] /= sm;
+                }
+            }
+            return result;
+        }
+
         static void save_strategy_to_file(const std::string &name, std::vector<std::array<T, ACTION_MAX_DIM>> &average_policy) {
             std::cout << "not implemented yet" << std::endl;
         }

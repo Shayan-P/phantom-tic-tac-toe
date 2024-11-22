@@ -37,5 +37,6 @@ endif()
 
 add_executable(pttt main_pttt.cpp)
 add_executable(rps main_rps.cpp)
+add_executable(scratch scratch.cpp)
 target_link_libraries(pttt xtensor xtensor-io)
 target_link_libraries(rps xtensor xtensor-io)

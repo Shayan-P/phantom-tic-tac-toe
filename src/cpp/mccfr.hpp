@@ -6,6 +6,8 @@
 #include <vector>
 #include <random>
 #include <mutex>
+#include "strategy.hpp"
+
 
 namespace mccfr {
     using T = double;
@@ -50,7 +52,7 @@ namespace mccfr {
             std::lock_guard<std::mutex> lock(mtx_regret); // lock the mutex
             T sum = 0;
             for(int i = 0; i < dim; i++) {
-                policy[i] += std::max(regret[i], 0.0);
+                policy[i] = std::max(regret[i], 0.0);
                 sum += policy[i];
             }
             if(sum <= 1e-9) { // epsilon error
@@ -105,7 +107,7 @@ namespace mccfr {
         // regret minimizers are saved in action index space
         // average policy is saved in **action** space
         std::vector<RegretMinimizer<Game::ACTION_MAX_DIM>> regret_minimizers; // size Game::NUM_INFO_SETS
-
+        
         using Buffer = std::array<T, Game::ACTION_MAX_DIM>;
         using BufferInt = std::array<int, Game::ACTION_MAX_DIM>;
 
@@ -113,16 +115,13 @@ namespace mccfr {
         struct ComputeMemo {
             Buffer utility;
 
-            int sample_index(Buffer &probs, int size) {
+            int sample_index(const Buffer &probs, int size) {
                 T sum = 0;
                 for (int i = 0; i < size; i++) {
                     sum += probs[i];
                 }
                 if (sum <= 1e-9) { // epsilon error
-                    for (int i = 0; i < size; i++) {
-                        probs[i] = 1.0;
-                    }
-                    sum = size;
+                    return int(dis(gen) * size);
                 }
 
                 T r = dis(gen) * sum;
@@ -155,6 +154,12 @@ namespace mccfr {
                 // we pass the reference of these two... they do not change throughout the sampling process...
                 episode(memo, state, player);
             }
+        }
+
+        void iteration(Player player) {
+            ComputeMemo memo;
+            Game state;
+            episode(memo, state, player);
         }
 
         MCCFR(): regret_minimizers(Game::NUM_INFO_SETS) { }
@@ -195,13 +200,30 @@ namespace mccfr {
             }
         }
 
+        strategy::Strategy<Game> get_strategy() {
+            std::vector<std::array<T, Game::ACTION_MAX_DIM>> average_policy_data;
+            average_policy_data.reserve(Game::NUM_INFO_SETS);
+            average_policy_data.resize(Game::NUM_INFO_SETS);
+            for(int i = 0; i < Game::NUM_INFO_SETS; i++) {
+                regret_minimizers[i].get_average_policy(average_policy_data[i]);
+            }
+            return Game::get_strategy(average_policy_data);
+        }
+
+        void set_strategy(const strategy::Strategy<Game> &strategy) {
+            for(int i = 0; i < Game::NUM_INFO_SETS; i++) {
+                regret_minimizers[i].set_average_policy(strategy.strat[i]);
+            }
+        }
+
     private:
-        T episode(ComputeMemo &memo, Game &state, Player player, T reach_me=1.0, T reach_other=1.0, T reach_sample=1.0) {
-            // std::cout << "entering ";
+        // later put & back for game state... for now we remove it to make simplification 
+        T episode(ComputeMemo &memo, const Game state, const Player player, const T reach_me=1.0, const T reach_other=1.0, const T reach_sample=1.0) {
+            // std::cout << "entering " << " cur player is " << state.current_player() << std::endl;
             // std::cout << state << std::endl;
 
             if(state.is_terminal()) {
-                // std::cout << "terminal " << std::endl;
+                // std::cout << "terminal " << " " << "utility=" << state.utility(player) << std::endl;
                 return state.utility(player);
             }
 
@@ -214,16 +236,16 @@ namespace mccfr {
             int num_actions = state.num_actions();
             state.actions(actions);
 
-
-
             if(state.is_chance()) {
                 // state should also carry a dynamic memory so that we can do this calculations on the fly without the need to allocate dynamic memory
                 state.action_probs(policy);
                 int action_idx = memo.sample_index(policy, num_actions);
                 auto p = policy[action_idx];
                 // be careful that after stepping the memo is changed because it is shared...
-                state.step(actions[action_idx]);
-                return episode(memo, state, player, reach_me, reach_other * p, reach_sample * p);
+                Game new_state = state;
+                new_state.step(actions[action_idx]); // todo later do this on state and add reference to state
+                // gets multiplied by p for the probability of the path and then gets divided by p for importance sampling
+                return episode(memo, new_state, player, reach_me, reach_other * p, reach_sample * p);
             }
 
             auto cur_player = state.current_player();
@@ -244,9 +266,6 @@ namespace mccfr {
 
             int action_idx = memo.sample_index(sample_policy, num_actions);
 
-            // be careful that after stepping the memo is changed because it is shared...
-            state.step(actions[action_idx]);
-
             T new_reach_me = reach_me;
             T new_reach_other = reach_other;
             T new_reach_sample = reach_sample * sample_policy[action_idx];
@@ -256,43 +275,56 @@ namespace mccfr {
                 new_reach_other *= policy[action_idx];
             }
 
-            auto child_value = episode(memo, state, player, new_reach_me, new_reach_other, new_reach_sample);
 
-            T value = 0;
+            // be careful that after stepping the memo is changed because it is shared...
+            Game new_state = state;
+            new_state.step(actions[action_idx]); // todo later do this on state and add reference to state
+
+            T rec_child_value = episode(memo, new_state, player, new_reach_me, new_reach_other, new_reach_sample);
+
+            T value_estimate = 0;
+
+            for(int i = 0; i < num_actions; i++) {
+                const T baseline = 0; // we can change later to improve the variance
+                T child_value = (
+                    (action_idx == i)
+                    ? (baseline + (rec_child_value - baseline) / sample_policy[action_idx])
+                    : (baseline)
+                );
+                memo.utility[i] = child_value * reach_other / reach_sample;
+                value_estimate += child_value * policy[i];
+            }
+
             if(cur_player == player) {
-                for(int i = 0; i < num_actions; i++) {
-
-                    const T baseline = 0; // we can change later to improve the variance
-                    T child_value = (
-                        baseline + (child_value - baseline) / sample_policy[action_idx]
-                        ? action_idx == i
-                        : baseline
-                    );
-                    memo.utility[i] = child_value * reach_other / reach_sample;
-                    value += child_value * policy[i];
-                }
                 regret_minimizers[info_set_idx].observe_utility(memo.utility, policy);
 
                 // update average policy
                 for(int i = 0; i < num_actions; i++) {
                     // why not update with new policy?
                     T increment = reach_me * policy[i] / reach_sample;
-                    // std::cout << "increment info_idx=" << info_set_idx << " i=" << i << " action=" << actions[i] << " increment=" << increment << std::endl;
-                    // std::cout << "probs " << reach_me << " " << policy[i] << " " << reach_sample << std::endl;
                     regret_minimizers[info_set_idx].increment_avg_policy(actions[i], increment);
                 }
-                // later put locks here if we are doing parallelism
             }
-            return value;
+            return value_estimate;
         }
 
     public:
         void debug_print() {
-            std::cout << "printing strategies in info sets:" << std::endl;
+            std::cout << "printing average strategy: ----------------------" << std::endl;
             for(int i = 0; i < Game::NUM_INFO_SETS; i++) {
                 std::cout << "info set " << i << std::endl;
                 Buffer policy;
                 regret_minimizers[i].get_average_policy(policy);
+                for(int j = 0; j < Game::ACTION_MAX_DIM; j++) {
+                    std::cout << policy[j] << " ";
+                }
+                std::cout << std::endl;
+            }
+            std::cout << "printing current strategy: ----------------------" << std::endl;
+            for(int i = 0; i < Game::NUM_INFO_SETS; i++) {
+                std::cout << "info set " << i << std::endl;
+                Buffer policy;
+                regret_minimizers[i].next_policy(policy);
                 for(int j = 0; j < Game::ACTION_MAX_DIM; j++) {
                     std::cout << policy[j] << " ";
                 }

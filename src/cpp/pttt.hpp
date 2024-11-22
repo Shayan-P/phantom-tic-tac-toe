@@ -88,7 +88,8 @@ namespace pttt {
             info_set_repr[PlayerIdx(cur_player)].second &= ~(1 << action_);
         }
 
-        void actions(ActionInts &buffer) { // don't use vector or dynamic memory
+        // the order of actions should be the same in all information sets
+        void actions(ActionInts &buffer) const { // don't use vector or dynamic memory
             Player player = game_.current_player();
             Actions mask = valid_action_mask(player, game_.player_observation(player));
             int cnt = 0;
@@ -156,19 +157,15 @@ namespace pttt {
         }
 
     public:
-        static void save_strategy_to_file(const std::string &name, std::vector<std::array<T, ACTION_MAX_DIM>> &average_policy) {
-            precompute_if_needed();
-
-            std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it1 = average_policy.begin();
-            std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it2 = it1 + info_sets_reprs_p[0].size();
-            std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it3 = average_policy.end();
-            assert(info_sets_reprs_p[0].size() + info_sets_reprs_p[1].size() == average_policy.size());
+        static std::vector<std::array<T, ACTION_MAX_DIM>> get_strategy(const std::vector<std::array<T, ACTION_MAX_DIM>> &average_policy) {
+            std::vector<std::array<T, ACTION_MAX_DIM>> result(NUM_INFO_SETS);
 
             // TODO: note one needs to assign average strategy to the nodes have value 0!
             // ugly ugly code... :D
             int idx = 0;
             for(int p = 0; p < 2; p++) {
                 for(int i = 0; i < info_sets_reprs_p[p].size(); i++, idx++) {
+                    result[idx] = average_policy[idx];
                     T sm = 0;
                     for(int j = 0; j < ACTION_MAX_DIM; j++) {
                         sm += average_policy[idx][j];
@@ -180,14 +177,28 @@ namespace pttt {
                         sm = num_valid_actions;
                         for(int j = 0; j < ACTION_MAX_DIM; j++) {
                             if(mask & (1<<j))
-                                average_policy[idx][j] = 1.0;
+                                result[idx][j] = 1.0;
                         }
                     }
                     for(int j = 0; j < ACTION_MAX_DIM; j++) {
-                        average_policy[idx][j] /= sm;
+                        result[idx][j] /= sm;
                     }
                 }
             }
+            return result;
+        }
+
+        static void save_strategy_to_file(const std::string &name, const std::vector<std::array<T, ACTION_MAX_DIM>> &average_policy) {
+            precompute_if_needed();
+
+            std::vector<std::array<T, ACTION_MAX_DIM>> policy = get_strategy(average_policy);
+            
+            assert(policy.size() == NUM_INFO_SETS);
+
+            std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it1 = policy.begin();
+            std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it2 = it1 + info_sets_reprs_p[0].size();
+            std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it3 = policy.end();
+            assert(info_sets_reprs_p[0].size() + info_sets_reprs_p[1].size() == policy.size());
 
             io::save_to_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_p0.npy"), it1, it2);
             io::save_to_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_p1.npy"), it2, it3);
