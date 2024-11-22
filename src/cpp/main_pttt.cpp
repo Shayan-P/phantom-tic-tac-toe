@@ -8,6 +8,7 @@
 using pttt::PTTT;
 using namespace std;
 using mccfr::MCCFR;
+using strategy::Strategy;
 
 // void sample_rollout() {
 //     Game game;
@@ -75,6 +76,11 @@ int main() {
                 strftime(buffer, sizeof(buffer), "parallel_checkpoint__%m_%d_%Y_%H_%M_%S", timePtr);
                 mccfr.save_checkpoint(buffer);
                 mccfr.save_checkpoint("latest");
+            }
+            if(true) { // define the frequency later...
+                Strategy strategy = mccfr.get_strategy(); // loads a huge data structure. try to avoid :D 
+                std::cout << "P1 against unifrom: " << strategy.evaluate_against_uniform(PTTT::Player::P1, 5000) << std::endl;
+                std::cout << "P2 against uniform: " << strategy.evaluate_against_uniform(PTTT::Player::P2, 5000) << std::endl;
             }
             minute_count++;
             this_thread::sleep_for(chrono::minutes(1));

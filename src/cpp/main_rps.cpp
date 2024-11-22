@@ -14,16 +14,23 @@ int main() {
 
     MCCFR<RPS> mccfr;    
 
-    mccfr.regret_minimizers[0].set_dim(3);
-    mccfr.regret_minimizers[1].set_dim(3);
-
-    mccfr.debug_print();
     for(int i = 0; i < 10000; i++) {
-        // mccfr.debug_print();
-        cout << "--------------------------------------\n";
         mccfr.iteration();
     }
-    mccfr.debug_print();
+    Strategy strategy = mccfr.get_strategy();
+    std::cout << strategy.evaluate_against_uniform(RPS::P1) << std::endl;
+    std::cout << strategy.evaluate_against_uniform(RPS::P1) << std::endl;
+
+    // mccfr.regret_minimizers[0].set_dim(3);
+    // mccfr.regret_minimizers[1].set_dim(3);
+
+    // mccfr.debug_print();
+    // for(int i = 0; i < 10000; i++) {
+    //     // mccfr.debug_print();
+    //     cout << "--------------------------------------\n";
+    //     mccfr.iteration();
+    // }
+    // mccfr.debug_print();
 
     // cout << "evaluating: \n";
 
