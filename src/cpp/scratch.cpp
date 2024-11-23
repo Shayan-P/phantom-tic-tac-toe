@@ -87,7 +87,7 @@ std::ostream& operator<<(std::ostream& os, const strategy::Strategy<Game>& strat
 }
 
 int main() {
-    using Game = loaded_game::Kuhn;
+    using Game = loaded_game::Leduc;
 
     mccfr::MCCFR<Game> mccfr;
     eval::Eval<Game> evaluator;
