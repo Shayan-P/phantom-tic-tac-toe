@@ -1,5 +1,6 @@
 
-#pragma once
+#ifndef RPS_HPP
+#define RPS_HPP
 
 #include <assert.h>
 #include <cstdint>
@@ -7,11 +8,8 @@
 #include <cstring>
 #include <vector>
 #include <array>
-#include "io.hpp"
 #include <filesystem>
 #include <string>
-#include "pttt_paths.hpp"
-#include "pttt_game_dynamics.hpp"
 
 namespace rps {
     class RPS {
@@ -143,9 +141,11 @@ namespace rps {
     const std::array<RPS::Player, RPS::NUM_PLAYERS> RPS::players = {RPS::Player::P1, RPS::Player::P2};
 
     std::ostream& operator<<(std::ostream& os, const RPS& game) {
-        os << "Player 1: " << game.p1_move;
-        os << " ";
-        os << "Player 2: " << game.p2_move << std::endl;
+        os << "(P1: " << game.p1_move;
+        os << " | ";
+        os << "P2: " << game.p2_move << ")";
         return os;
     }
 }
+
+#endif

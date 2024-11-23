@@ -1,4 +1,5 @@
-#pragma once
+#ifndef IO_MCCFR_HPP
+#define IO_MCCFR_HPP
 
 #include <array>
 #include <cassert>
@@ -200,6 +201,16 @@ namespace mccfr {
             }
         }
 
+        std::vector<std::array<T, Game::ACTION_MAX_DIM>> get_strategy_data() {
+            std::vector<std::array<T, Game::ACTION_MAX_DIM>> average_policy_data;
+            average_policy_data.reserve(Game::NUM_INFO_SETS);
+            average_policy_data.resize(Game::NUM_INFO_SETS);
+            for(int i = 0; i < Game::NUM_INFO_SETS; i++) {
+                regret_minimizers[i].get_average_policy(average_policy_data[i]);
+            }
+            return average_policy_data;
+        }
+
         strategy::Strategy<Game> get_strategy() {
             std::vector<std::array<T, Game::ACTION_MAX_DIM>> average_policy_data;
             average_policy_data.reserve(Game::NUM_INFO_SETS);
@@ -333,3 +344,5 @@ namespace mccfr {
         }
     };
 } // namespace mccfr
+
+#endif

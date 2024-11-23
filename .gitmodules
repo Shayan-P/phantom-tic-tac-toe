@@ -10,3 +10,9 @@
 [submodule "deps/ghc-filesystem"]
 	path = deps/ghc-filesystem
 	url = https://github.com/gulrak/filesystem.git
+[submodule "deps/matplotlib-cpp"]
+	path = deps/matplotlib-cpp
+	url = https://github.com/lava/matplotlib-cpp.git
+[submodule "deps/gnuplot-iostream"]
+	path = deps/gnuplot-iostream
+	url = https://github.com/dstahlke/gnuplot-iostream.git

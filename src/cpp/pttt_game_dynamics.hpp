@@ -1,3 +1,6 @@
+#ifndef PTTT_GAME_DYNAMICS_HPP
+#define PTTT_GAME_DYNAMICS_HPP
+
 #include <assert.h>
 #include <cstdint>
 #include <iostream>
@@ -181,3 +184,5 @@ namespace pttt
         return os;
     }
 } // namespace pttt
+
+#endif

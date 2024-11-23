@@ -1,3 +1,6 @@
+#ifndef STRATEGY_HPP
+#define STRATEGY_HPP
+
 #include <vector>
 #include <array>
 #include <cassert>
@@ -25,10 +28,20 @@ namespace strategy
             dis = std::uniform_real_distribution<T>(0.0, 1.0);
         }
 
+        Strategy(Strategy &&other) : strat(std::move(other.strat)) {
+            gen = std::mt19937(rd());
+            dis = std::uniform_real_distribution<T>(0.0, 1.0);
+        }
+
         Action sample_action(const Game &state) {
             std::array<int, Game::ACTION_MAX_DIM> actions;
             state.actions(actions);
             int num_actions = state.num_actions();
+            if(state.is_chance()) {
+                Buffer policy;
+                state.action_probs(policy);
+                return actions[sample_index(policy, num_actions)];
+            }
             int info_set_idx = state.info_set_idx();
             Action action = sample_index(strat[info_set_idx], Game::ACTION_MAX_DIM);
             for(int i = 0; i < num_actions; i++) {
@@ -175,3 +188,5 @@ namespace strategy
         std::uniform_real_distribution<T> dis;
     };
 } // namespace strat
+
+#endif

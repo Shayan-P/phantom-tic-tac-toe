@@ -1,3 +1,6 @@
+#ifndef IO_HPP
+#define IO_HPP
+
 #include <vector>
 #include <string>
 #include <map>
@@ -9,6 +12,19 @@
 #include "xtensor-io/xnpz.hpp"
 
 namespace io {
+    // 1 dim case
+    template <typename T, typename Iterator>
+    static void save_to_numpy(const std::string &filename, Iterator itl, Iterator itr) {
+        std::cout << "save " << filename << std::endl;
+        int N = itr - itl;
+        xt::xarray<T> arr = xt::zeros<T>({N});
+        for(int i = 0; i < N; i++) {
+            arr(i) = *(itl + i);
+        }
+        xt::dump_npy(filename, arr);
+        std::cout << "done " << filename << std::endl;
+    }
+
     template <typename T, int DIM, typename Iterator>
     static void save_to_numpy(const std::string &filename, Iterator itl, Iterator itr) {
         std::cout << "save " << filename << std::endl;
@@ -38,3 +54,5 @@ namespace io {
         std::cout << "done " << filename << std::endl;
     }
 };
+
+#endif

@@ -1,5 +1,5 @@
-
-#pragma once
+#ifndef PTTT_HPP
+#define PTTT_HPP
 
 #include <assert.h>
 #include <cstdint>
@@ -10,7 +10,7 @@
 #include "io.hpp"
 #include <filesystem>
 #include <string>
-#include "pttt_paths.hpp"
+#include "paths.hpp"
 #include "pttt_game_dynamics.hpp"
 
 namespace pttt {
@@ -200,8 +200,8 @@ namespace pttt {
             std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it3 = policy.end();
             assert(info_sets_reprs_p[0].size() + info_sets_reprs_p[1].size() == policy.size());
 
-            io::save_to_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_p0.npy"), it1, it2);
-            io::save_to_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_p1.npy"), it2, it3);
+            io::save_to_numpy<T, ACTION_MAX_DIM>(paths::get_checkpoints_dir() / (name + "_p0.npy"), it1, it2);
+            io::save_to_numpy<T, ACTION_MAX_DIM>(paths::get_checkpoints_dir() / (name + "_p1.npy"), it2, it3);
         }
 
         static void load_strategy_from_file(const std::string &name, std::vector<std::array<T, ACTION_MAX_DIM>> &average_policy) {
@@ -212,21 +212,21 @@ namespace pttt {
             std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it1 = average_policy.begin();
             std::vector<std::array<T, ACTION_MAX_DIM>>::iterator it2 = it1 + info_sets_reprs_p[0].size();
 
-            io::load_from_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_p0.npy"), it1);
-            io::load_from_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_p1.npy"), it2);
+            io::load_from_numpy<T, ACTION_MAX_DIM>(paths::get_checkpoints_dir() / (name + "_p0.npy"), it1);
+            io::load_from_numpy<T, ACTION_MAX_DIM>(paths::get_checkpoints_dir() / (name + "_p1.npy"), it2);
         }
 
         // todo later make the type generic
         template<typename T>
         static void save_state_from_file(const std::string &name, std::vector<std::array<T, ACTION_MAX_DIM>> &state) {
             precompute_if_needed();
-            io::save_to_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_state.npy"), state.begin(), state.end());
+            io::save_to_numpy<T, ACTION_MAX_DIM>(paths::get_checkpoints_dir() / (name + "_state.npy"), state.begin(), state.end());
         }
 
         static void load_state_from_file(const std::string &name, std::vector<std::array<T, ACTION_MAX_DIM>> &state) {
             precompute_if_needed();
 
-            io::load_from_numpy<T, ACTION_MAX_DIM>(pttt::get_checkpoints_dir() / (name + "_state.npy"), state.begin());
+            io::load_from_numpy<T, ACTION_MAX_DIM>(paths::get_checkpoints_dir() / (name + "_state.npy"), state.begin());
         }
 
         static void precompute_if_needed() {
@@ -262,3 +262,5 @@ namespace pttt {
         return os;
     }
 }
+
+#endif
