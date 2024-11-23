@@ -60,7 +60,7 @@ namespace eval {
         using Player = typename Game::Player;
 
         History root;
-        Infoset infosets[Game::NUM_INFO_SETS];
+        std::vector<Infoset> infosets;
 
         void create_rec(History &history) {
             if(history.state.is_terminal()) {
@@ -75,7 +75,7 @@ namespace eval {
         }
 
     public:
-        Eval(): root(Game()) {
+        Eval(): root(Game()), infosets(Game::NUM_INFO_SETS) {
             create_rec(root);
         }
 
