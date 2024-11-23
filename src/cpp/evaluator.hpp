@@ -43,7 +43,7 @@ namespace eval {
 
             History(const Game &state): 
                 state(state),
-                infoset_idx(state.info_set_idx()),
+                infoset_idx((state.is_terminal() || state.is_chance()) ? -1 : state.info_set_idx()),
                 actions(get_actions(state)),
                 children(get_children(state))
             {}
@@ -125,7 +125,7 @@ namespace eval {
                 }
             } else { // cur_player == player
                 assert(hist.state.current_player() == player);
-                int idx = hist.state.info_set_idx();
+                int idx = hist.infoset_idx;
                 if(infosets[idx].visited) {
                     return;
                 }
