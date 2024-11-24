@@ -95,6 +95,33 @@ namespace strategy
         }
 
 
+        T uniform_vs_uniform(Player p, int iters=1000) {
+            T sum = 0;
+            for(int _ = 0; _ < iters; _++) {
+                Game state;
+                BufferInt actions;
+                state.actions(actions);
+                Buffer policy;
+
+                while(!state.is_terminal()) {
+                    int num_actions = state.num_actions();
+                    state.actions(actions);
+                    Action action;
+
+                    if(state.is_chance()) {
+                        state.action_probs(policy);
+                        action = actions[sample_index(policy, num_actions)];
+                    } else {
+                        action = actions[int(dis(gen) * num_actions)];
+                    }
+                    state.step(action);
+                }
+                sum += state.utility(p);
+            }
+            return sum / iters;
+        }
+
+
         // using Utils = std::vector<std::array<T, Game::ACTION_MAX_DIM>>;
         
         // struct InfosetInfo {

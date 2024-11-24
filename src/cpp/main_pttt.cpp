@@ -11,7 +11,7 @@
 using Game = pttt::PTTT;
 using MCCFR = mccfr::MCCFR<Game>;
 using Strategy = strategy::Strategy<Game>;
-using Eval = eval::Eval<Game>;
+using Eval = eval::EvalFast<Game>;
 using namespace std;
 
 // void sample_rollout() {
@@ -107,7 +107,6 @@ int main() {
                 stats.push_back({int(elapsed_since_start), iters.load(), nash_gap});
                 std::cout << "nash gap " << nash_gap << std::endl;
 
-                // plot
                 std::vector<double> nash_gap_data;
                 std::vector<int> iters_data;
                 std::vector<int> minutes_data;

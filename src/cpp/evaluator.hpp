@@ -191,6 +191,171 @@ namespace eval {
             return eval_for(strategy_p1, p1) - eval_for(strategy_p2, p1);
         }
     };
+
+    // hopefully fast
+    template<typename Game>
+    class Treeplex {
+        enum NodeType {
+            DECISION, OBSERVATION
+        };
+        using T = double;
+        using Strategy = typename strategy::Strategy<Game>;
+
+        struct Node {
+            std::map<int, Node*> children;
+            NodeType type;
+            int info_set_idx;
+            int num_actions;
+            std::array<int, Game::ACTION_MAX_DIM> actions;
+
+            double value;
+
+            Node* get_or_create_child(int idx) {
+                if(children.find(idx) == children.end()) {
+                    children[idx] = new Node();
+                }
+                return children[idx];
+            }
+        };
+
+        using Player = typename Game::Player;
+
+        Node root;
+        Player player;
+
+    public:
+        Treeplex(Player player): player(player) {}
+
+        void update_from_root(const Strategy &strategy) {
+            reset(root);
+            update(Game(), root, strategy, 1.0);
+        }
+
+        void reset(Node &node) {
+            node.value = 0;
+            node.info_set_idx = -1;
+            for(auto [_, child]: node.children) {
+                reset(*child);
+            }
+        }
+
+        void update(const Game& state, Node& node, const Strategy &strategy, double p_reach) {
+            if(state.is_terminal()) {
+                node.type = OBSERVATION;
+                node.value += state.utility(player) * p_reach;
+                return;
+            }
+
+            std::array<double, Game::ACTION_MAX_DIM> probs;
+            std::array<int, Game::ACTION_MAX_DIM> actions;
+            state.actions(actions);
+            int num_actions = state.num_actions();
+            int info_set_idx = state.info_set_idx();
+            if(state.is_chance()) {
+                state.action_probs(probs);
+            } else {
+                for(int i = 0; i < num_actions; i++) {
+                    probs[i] = strategy.strat[info_set_idx][actions[i]];
+                }
+            }
+            
+            if(state.is_chance() || state.current_player() != player) {
+                node.type = OBSERVATION;
+
+                for(int i = 0; i < num_actions; i++) {
+                    Game new_state = state;
+                    new_state.step(actions[i]);
+                    if(new_state.is_terminal() || new_state.is_chance() || new_state.current_player() != player) {
+                        update(new_state, node, strategy, p_reach * probs[i]);
+                    } else {
+                        update(new_state, *node.get_or_create_child(new_state.info_set_idx()), strategy, p_reach * probs[i]);
+                    }
+                }
+            } else {
+                assert(state.current_player() == player);
+
+                node.type = DECISION;
+                node.info_set_idx = state.info_set_idx();
+                node.num_actions = num_actions;
+                node.actions = actions;
+                // put some assert that the order of actions are the same: TODO :D                
+                for(int i = 0; i < num_actions; i++) {
+                    Game new_state = state;
+                    new_state.step(actions[i]);
+                    update(new_state, *node.get_or_create_child(i), strategy, p_reach);
+                }
+            }
+        }
+
+        Strategy best_response(const Strategy &strategy) {
+            update_from_root(strategy);
+            Strategy new_strategy(strategy.strat);
+            best_response_rec(root, new_strategy);
+            return new_strategy;
+        }
+
+        void best_response_rec(Node& node, Strategy &strategy) {
+            if(node.type == OBSERVATION) {
+                for(auto [_, child]: node.children) {
+                    best_response_rec(*child, strategy);
+                    node.value += child->value;
+                }
+            } else {
+                int best_action = -1;
+                T prev_best = 0;
+                for(auto [action_idx, child]: node.children) {
+                    best_response_rec(*child, strategy);
+                    if(best_action == -1 || prev_best < (child->value)) {
+                        best_action = action_idx;
+                        prev_best = child->value;
+                    }
+                }
+                node.value = prev_best;
+                for(int i = 0; i < Game::ACTION_MAX_DIM; i++) {
+                    strategy.strat[node.info_set_idx][i] = 0;
+                }
+                for(int i = 0; i < node.num_actions; i++) {
+                    strategy.strat[node.info_set_idx][node.actions[i]] = (i == best_action);
+                }
+            }
+        }
+
+        T get_last_eval() {
+            return root.value;
+        }
+    };
+
+    template<typename Game>
+    class EvalFast {
+        using Player = typename Game::Player;
+        using Strategy = typename strategy::Strategy<Game>;
+        using T = double;
+
+        std::map<Player, Treeplex<Game>*> treeplexes;
+
+    public:
+
+        EvalFast() {
+            for(auto player: Game::players) {
+                treeplexes[player] = new Treeplex<Game>(player);
+            }
+        }
+
+        Strategy best_response(const Strategy &strategy, Player player) {
+            return treeplexes[player]->best_response(strategy);
+        }
+
+        T nash_gap(const Strategy &strategy) {
+            // only for two player games...
+            assert(Game::NUM_PLAYERS == 2);
+            auto p1 = Game::players[0];
+            auto p2 = Game::players[1];
+            Strategy strategy_p1 = best_response(strategy, p1);
+            Strategy strategy_p2 = best_response(strategy, p2);
+            return treeplexes[p1]->get_last_eval() + treeplexes[p2]->get_last_eval();
+            // return eval_for(strategy_p1, p1) - eval_for(strategy_p2, p1);
+        }
+    };
 }
 
 #endif
