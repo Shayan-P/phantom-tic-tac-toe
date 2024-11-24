@@ -75,7 +75,7 @@ namespace pttt {
             bool won = game_.has_won(cur_player);
             if(won) {
                 done = true;
-                winner = OtherPlayer(cur_player);
+                winner = cur_player;
             }
             else if(game_.board_fully_occupied()) {
                 done = true;
