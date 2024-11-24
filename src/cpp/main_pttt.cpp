@@ -11,7 +11,7 @@
 using Game = pttt::PTTT;
 using MCCFR = mccfr::MCCFR<Game>;
 using Strategy = strategy::Strategy<Game>;
-using Eval = eval::Eval<Game>;
+using Eval = eval::EvalFast<Game>;
 using namespace std;
 
 // void sample_rollout() {
@@ -65,9 +65,12 @@ int main() {
     }
 
     threads.emplace_back([&mccfr, &iters]() {
-        // logging thread 
+        std::cout << "Starting logging thread" << std::endl;
+
         Eval eval;
 
+        std::cout << "Evaluator Created" << std::endl;
+        
         auto start = chrono::steady_clock::now();
         auto last_checkpoint = start;
         auto elapsed_since_start_prev = -1;
@@ -95,6 +98,8 @@ int main() {
                 mccfr.save_checkpoint("latest");
             }
             if(true) { // define the frequency later...
+                auto start_stat = chrono::steady_clock::now();
+
                 Strategy strategy = mccfr.get_strategy(); // loads a huge data structure. try to avoid :D 
                 std::cout << "P1 against unifrom: " << strategy.evaluate_against_uniform(Game::Player::P1, 5000) << std::endl;
                 std::cout << "P2 against uniform: " << strategy.evaluate_against_uniform(Game::Player::P2, 5000) << std::endl;
@@ -102,7 +107,6 @@ int main() {
                 stats.push_back({int(elapsed_since_start), iters.load(), nash_gap});
                 std::cout << "nash gap " << nash_gap << std::endl;
 
-                // plot
                 std::vector<double> nash_gap_data;
                 std::vector<int> iters_data;
                 std::vector<int> minutes_data;
@@ -114,6 +118,10 @@ int main() {
                 io::save_to_numpy<double>("./nash_gaps.npy", nash_gap_data.begin(), nash_gap_data.end());
                 io::save_to_numpy<int>("./iters.npy", iters_data.begin(), iters_data.end());
                 io::save_to_numpy<int>("./minutes.npy", minutes_data.begin(), minutes_data.end());
+
+                auto end_stat = chrono::steady_clock::now();
+                auto elapsed_stat = chrono::duration_cast<chrono::minutes>(start_stat - end_stat).count();
+                std::cout << "Time to Calculate Stats (minutes): " << elapsed_stat << std::endl;
             }
             this_thread::sleep_for(chrono::minutes(1));
         }

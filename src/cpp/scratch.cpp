@@ -89,28 +89,35 @@ std::ostream& operator<<(std::ostream& os, const strategy::Strategy<Game>& strat
 int main() {
     using Game = loaded_game::Leduc;
 
+    // eval::EvalFast<Game> evaluator_fast;
+
+    // strategy::Strategy<Game> strategy({
+    //     {1, 0, 0},
+    //     {0, 1, 0}
+    // });
+    // cout << strategy << endl;
+    // cout << evaluator_fast.best_response(strategy, Game::Player::P1) << endl;
     mccfr::MCCFR<Game> mccfr;
     eval::Eval<Game> evaluator;
+    eval::EvalFast<Game> evaluator_fast;
 
     std::vector<double> gaps;
+    std::vector<double> gaps_fast;
     for(int i = 0; i < 500000; i++) {
         mccfr.iteration();
         strategy::Strategy<Game> strategy = mccfr.get_strategy();
         auto gap = evaluator.nash_gap(strategy);
         gaps.push_back(gap);
+        auto gap_fast = evaluator_fast.nash_gap(strategy);
+        gaps_fast.push_back(gap_fast);
+        // std::cout << "strategy: " << std::endl;
+        // std::cout << strategy << std::endl;
         std::cout << "nash gap: " << gap << std::endl;
+        std::cout << "nash gap fast: " << gap_fast << std::endl;
         assert(gap >= 0);
+        assert(gap_fast >= 0);
+        // assert gap - gap_fast
     }
     io::save_to_numpy<double>("./gaps.npy", gaps.begin(), gaps.end());
-
-    // cout << count_histories(Game()) << endl;
-    // loaded_game::LoadedGame(paths::get_kuhn_descriptor());
-
-    // cout << count_histories(kuhn) << endl;
-    // while(true) {
-    //     mccfr.iteration();    
-    //     strategy::Strategy<loaded_game::Kuhn> strategy = kuhn.get_strategy(mccfr.get_strategy_data());
-    //     cout << "P1 " << strategy.evaluate(loaded_game::Kuhn::Player::P1) << endl;
-    //     cout << "P2 " << strategy.evaluate(loaded_game::Kuhn::Player::P2) << endl;
-    // }
+    io::save_to_numpy<double>("./gaps_fast.npy", gaps_fast.begin(), gaps_fast.end());
 }
