@@ -25,7 +25,7 @@ namespace mccfr_es {
         T average_policy[MAX_DIM];
         T baselines[MAX_DIM];
 
-        T mixing_weight = 0.01; // mixing weight for the baseline
+        T mixing_weight = 0.1; // mixing weight for the baseline
 
         int dim = -1;
         std::mutex mtx_regret, mtx_policy, mtx_baselines; // mutex for locking
@@ -300,10 +300,10 @@ namespace mccfr_es {
 
             Utility baseline_values;
             regret_minimizers[info_set_idx].get_baselines(baseline_values);
-            int min_idx = min_util_idx(baseline_values, num_actions);
-            T expl = (T) num_actions;
-            T gamma = 10.0;
-            T tot_prob = 0.0;
+            // int min_idx = min_util_idx(baseline_values, num_actions);
+            // T expl = (T) num_actions;
+            // T gamma = 1.0;
+            // T tot_prob = 0.0;
             if(cur_player == player) {
                 for(int i = 0; i < num_actions; i++) {
                     sample_policy[i] = EXPLORATION / num_actions + (1.0 - EXPLORATION) * policy[i];
@@ -347,11 +347,13 @@ namespace mccfr_es {
                     ? (baseline + (rec_child_value - baseline) / sample_policy[action_idx])
                     : (baseline)
                 );
+                // if (action_idx == i) std::cout << "rec_child_value " << rec_child_value << " baseline " << baseline << std::endl;
                 memo.utility[i] = child_value * reach_other / reach_sample;
                 value_estimate += child_value * policy[i];
             }
 
             if(cur_player == player) {
+                regret_minimizers[info_set_idx].update_baselines(memo.utility, reach_sample, reach_other);
                 regret_minimizers[info_set_idx].observe_utility(memo.utility, policy);
 
                 // update average policy
@@ -363,6 +365,111 @@ namespace mccfr_es {
             }
             return value_estimate;
         }
+
+    T external_episode(ComputeMemo &memo, const Game state, const Player player, const T reach_me=1.0, const T reach_other=1.0, const T reach_sample=1.0) {
+            // std::cout << "entering " << " cur player is " << state.current_player() << std::endl;
+            // std::cout << state << std::endl;
+
+            if(state.is_terminal()) {
+                // std::cout << "terminal " << " " << "utility=" << state.utility(player) << std::endl;
+                return state.utility(player);
+            }
+
+            // memory creation
+            Buffer policy;
+            Buffer sample_policy;
+            BufferInt actions;
+            // end memo creation
+
+            int num_actions = state.num_actions();
+            state.actions(actions);
+
+            if(state.is_chance()) {
+                // state should also carry a dynamic memory so that we can do this calculations on the fly without the need to allocate dynamic memory
+                state.action_probs(policy);
+                int action_idx = memo.sample_index(policy, num_actions);
+                auto p = policy[action_idx];
+                // be careful that after stepping the memo is changed because it is shared...
+                Game new_state = state;
+                new_state.step(actions[action_idx]); // todo later do this on state and add reference to state
+                // gets multiplied by p for the probability of the path and then gets divided by p for importance sampling
+                return episode(memo, new_state, player, reach_me, reach_other * p, reach_sample * p);
+            }
+
+            auto cur_player = state.current_player();
+            int info_set_idx = state.info_set_idx();
+            // later put locks here if we are doing parallelism
+            regret_minimizers[info_set_idx].set_dim(num_actions); // sets the dimension if you are visiting the regret minimizer for the first time
+            regret_minimizers[info_set_idx].next_policy(policy); // gets the policy
+
+            Utility baseline_values;
+            regret_minimizers[info_set_idx].get_baselines(baseline_values);
+            if(cur_player == player) {
+                for(int i = 0; i < num_actions; i++) {
+                    sample_policy[i] = EXPLORATION / num_actions + (1.0 - EXPLORATION) * policy[i];
+                } // exploration + policy
+            } else {
+                for(int i = 0; i < num_actions; i++) {
+                    sample_policy[i] = policy[i];
+                }
+            }
+            T new_reach_me, new_reach_other, new_reach_sample;
+            T rec_child_value;
+            int action_idx;
+
+            if (cur_player != player){
+                action_idx = memo.sample_index(sample_policy, num_actions);
+                new_reach_me = reach_me;
+                new_reach_other = reach_other * policy[action_idx];
+                new_reach_sample = reach_sample * sample_policy[action_idx];
+
+                // be careful that after stepping the memo is changed because it is shared...
+                Game new_state = state;
+                new_state.step(actions[action_idx]); // todo later do this on state and add reference to state
+
+                if (cur_player != player) {
+                    rec_child_value = episode(memo, new_state, player, new_reach_me, new_reach_other, new_reach_sample);
+                }
+            }
+
+            T value_estimate = 0;
+
+            for(int i = 0; i < num_actions; i++) {
+                const T baseline = baseline_values[i]; // we can change later to improve the variance
+                T child_value = baseline;
+                if (cur_player == player) {
+                    Game new_state = state;
+                    new_state.step(actions[i]);
+                    new_reach_me = reach_me * policy[i];
+                    new_reach_other = reach_other;
+                    rec_child_value = episode(memo, new_state, player, new_reach_me, new_reach_other, new_reach_sample);
+                    child_value = baseline + (rec_child_value - baseline) / sample_policy[i];
+                } else {
+                    child_value = (
+                        (action_idx == i)
+                        ? (baseline + (rec_child_value - baseline) / sample_policy[action_idx])
+                        : (baseline)
+                    );
+                }
+                std::cout << "rec_child_value " << rec_child_value << " baseline " << baseline << std::endl;
+                memo.utility[i] = child_value * reach_other / reach_sample;
+                value_estimate += child_value * policy[i];
+            }
+
+            if(cur_player == player) {
+                regret_minimizers[info_set_idx].observe_utility(memo.utility, policy);
+                regret_minimizers[info_set_idx].update_baselines(memo.utility, reach_sample, reach_other);
+
+                // update average policy
+                for(int i = 0; i < num_actions; i++) {
+                    // why not update with new policy?
+                    T increment = reach_me * policy[i] / reach_sample;
+                    regret_minimizers[info_set_idx].increment_avg_policy(actions[i], increment);
+                }
+            }
+            return value_estimate;
+        }
+
 
     public:
         void debug_print() {
