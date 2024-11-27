@@ -1,6 +1,8 @@
 #ifndef IO_MCCFR_ES_HPP
 #define IO_MCCFR_ES_HPP
 
+#define RMPLUS 0
+
 #include <array>
 #include <cassert>
 #include <cstring>
@@ -23,7 +25,7 @@ namespace mccfr_es {
         T average_policy[MAX_DIM];
         T baselines[MAX_DIM];
 
-        T mixing_weight = 0.1; // mixing weight for the baseline
+        T mixing_weight = 0.01; // mixing weight for the baseline
 
         int dim = -1;
         std::mutex mtx_regret, mtx_policy, mtx_baselines; // mutex for locking
@@ -50,6 +52,9 @@ namespace mccfr_es {
             }
             for(int i = 0; i < dim; i++) {
                 regret[i] += utility[i] - avg;
+                if(RMPLUS) {
+                    regret[i] = std::max(regret[i], 0.0);
+                }
             }
         }
 
@@ -113,7 +118,7 @@ namespace mccfr_es {
             average_policy[action] += increment;
         }
     };;
-    
+
 ////////////////////////////////////////
 
     template<class Game>
@@ -129,6 +134,16 @@ namespace mccfr_es {
         using Buffer = std::array<T, Game::ACTION_MAX_DIM>;
         using BufferInt = std::array<int, Game::ACTION_MAX_DIM>;
         using Utility = std::array<T, Game::ACTION_MAX_DIM>;
+
+        int min_util_idx(const Utility& util, int end){
+            int min_idx = 0;
+            for(int i = 1; i < end; i++) {
+                if(util[i] < util[min_idx]) {
+                    min_idx = i;
+                }
+            }
+            return min_idx;
+        }
 
         // compute memo is a scratch pad for the computation that needs to happen in each node...
         struct ComputeMemo {
@@ -283,10 +298,22 @@ namespace mccfr_es {
             regret_minimizers[info_set_idx].set_dim(num_actions); // sets the dimension if you are visiting the regret minimizer for the first time
             regret_minimizers[info_set_idx].next_policy(policy); // gets the policy
 
+            Utility baseline_values;
+            regret_minimizers[info_set_idx].get_baselines(baseline_values);
+            int min_idx = min_util_idx(baseline_values, num_actions);
+            T expl = (T) num_actions;
+            T gamma = 10.0;
+            T tot_prob = 0.0;
             if(cur_player == player) {
                 for(int i = 0; i < num_actions; i++) {
                     sample_policy[i] = EXPLORATION / num_actions + (1.0 - EXPLORATION) * policy[i];
+                    // if (i == min_idx) continue;
+                    // T prob = 1 / (expl + gamma * (baseline_values[i] - baseline_values[min_idx]));
+                    // tot_prob += prob;
+                    // sample_policy[i] = prob;
+
                 } // exploration + policy
+                // sample_policy[min_idx] = 1.0 - tot_prob;
             } else {
                 for(int i = 0; i < num_actions; i++) {
                     sample_policy[i] = policy[i];
@@ -313,8 +340,6 @@ namespace mccfr_es {
 
             T value_estimate = 0;
 
-            Utility baseline_values;
-            regret_minimizers[info_set_idx].get_baselines(baseline_values);
             for(int i = 0; i < num_actions; i++) {
                 const T baseline = baseline_values[i]; // we can change later to improve the variance
                 T child_value = (
