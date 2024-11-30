@@ -1,7 +1,8 @@
 // #define NO_PRECOMPUTE
 
 #include "pttt.hpp"
-#include "mccfr.hpp"
+// #include "mccfr.hpp"
+#include "mccfr_es.hpp"
 #include "evaluator.hpp"
 #include <thread>
 #include <atomic>
@@ -9,7 +10,7 @@
 
 // using Game = loaded_game::Kuhn;
 using Game = pttt::PTTT;
-using MCCFR = mccfr::MCCFR<Game>;
+using MCCFR = mccfr_es:MCCFR<Game>;
 using Strategy = strategy::Strategy<Game>;
 using Eval = eval::EvalFast<Game>;
 using namespace std;

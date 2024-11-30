@@ -58,10 +58,10 @@ namespace mccfr_es {
             }
         }
 
-        void update_baselines(const Utility& utility, const T reach_sample, const T reach_other) {
+        void update_baselines(const Utility& utility) {
             std::lock_guard<std::mutex> lock(mtx_baselines); // lock the mutex
             for(int i = 0; i < dim; i++) {
-                baselines[i] = (1 - mixing_weight) * baselines[i] + mixing_weight * utility[i] * reach_sample / reach_other;
+                baselines[i] = (1 - mixing_weight) * baselines[i] + mixing_weight * utility[i];
             }
         }
 
@@ -340,22 +340,25 @@ namespace mccfr_es {
 
             T value_estimate = 0;
 
+            Utility baseline_update;
+            bool to_update = true;
             for(int i = 0; i < num_actions; i++) {
-                const T baseline = baseline_values[i]; // we can change later to improve the variance
+                // Zero-sum game hack
+                const T baseline = cur_player == player? baseline_values[i] : -baseline_values[i];
                 T child_value = (
                     (action_idx == i)
                     ? (baseline + (rec_child_value - baseline) / sample_policy[action_idx])
                     : (baseline)
                 );
-                // if (action_idx == i) std::cout << "rec_child_value " << rec_child_value << " baseline " << baseline << std::endl;
                 memo.utility[i] = child_value * reach_other / reach_sample;
+                // Zero-sum game hack
+                baseline_update[i] = cur_player == player? child_value: -child_value;
                 value_estimate += child_value * policy[i];
             }
+            if(to_update) regret_minimizers[info_set_idx].update_baselines(baseline_update);
 
             if(cur_player == player) {
-                regret_minimizers[info_set_idx].update_baselines(memo.utility, reach_sample, reach_other);
                 regret_minimizers[info_set_idx].observe_utility(memo.utility, policy);
-
                 // update average policy
                 for(int i = 0; i < num_actions; i++) {
                     // why not update with new policy?
@@ -421,7 +424,7 @@ namespace mccfr_es {
                 action_idx = memo.sample_index(sample_policy, num_actions);
                 new_reach_me = reach_me;
                 new_reach_other = reach_other * policy[action_idx];
-                new_reach_sample = reach_sample * sample_policy[action_idx];
+                new_reach_sample = reach_sample * policy[action_idx];
 
                 // be careful that after stepping the memo is changed because it is shared...
                 Game new_state = state;
@@ -442,6 +445,7 @@ namespace mccfr_es {
                     new_state.step(actions[i]);
                     new_reach_me = reach_me * policy[i];
                     new_reach_other = reach_other;
+                    new_reach_sample = reach_sample * sample_policy[i];
                     rec_child_value = episode(memo, new_state, player, new_reach_me, new_reach_other, new_reach_sample);
                     child_value = baseline + (rec_child_value - baseline) / sample_policy[i];
                 } else {

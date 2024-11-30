@@ -94,7 +94,7 @@ int main() {
     eval::Eval<Game> evaluator;
 
     std::vector<double> gaps;
-    for(int i = 0; i < 50000; i++) {
+    for(int i = 0; i < 500000; i++) {
         mccfr.iteration();
         strategy::Strategy<Game> strategy = mccfr.get_strategy();
         auto gap = evaluator.nash_gap(strategy);
