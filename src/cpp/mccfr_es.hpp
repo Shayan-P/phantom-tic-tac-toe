@@ -25,7 +25,7 @@ namespace mccfr_es {
         T average_policy[MAX_DIM];
         T baselines[MAX_DIM];
 
-        T mixing_weight = 0.1; // mixing weight for the baseline
+        T mixing_weight = 0.5; // mixing weight for the baseline
 
         int dim = -1;
         std::mutex mtx_regret, mtx_policy, mtx_baselines; // mutex for locking
@@ -125,7 +125,7 @@ namespace mccfr_es {
     class MCCFR {
         using Player = typename Game::Player;
 
-        static constexpr T EXPLORATION = 0.6;
+        static constexpr T EXPLORATION = 1.0;
 
         // regret minimizers are saved in action index space
         // average policy is saved in **action** space
@@ -148,6 +148,12 @@ namespace mccfr_es {
         // compute memo is a scratch pad for the computation that needs to happen in each node...
         struct ComputeMemo {
             Buffer utility;
+
+            ComputeMemo(const ComputeMemo& other) {
+                utility = other.utility;
+                gen = std::mt19937(rd());
+                dis = std::uniform_real_distribution<T>(0.0, 1.0);
+            }
 
             int sample_index(const Buffer &probs, int size) {
                 T sum = 0;
@@ -262,7 +268,7 @@ namespace mccfr_es {
 
     private:
         // later put & back for game state... for now we remove it to make simplification 
-        T episode(ComputeMemo &memo, const Game state, const Player player, const T reach_me=1.0, const T reach_other=1.0, const T reach_sample=1.0) {
+        T outcome_episode(ComputeMemo &memo, const Game state, const Player player, const T reach_me=1.0, const T reach_other=1.0, const T reach_sample=1.0) {
             // std::cout << "entering " << " cur player is " << state.current_player() << std::endl;
             // std::cout << state << std::endl;
 
@@ -289,7 +295,7 @@ namespace mccfr_es {
                 Game new_state = state;
                 new_state.step(actions[action_idx]); // todo later do this on state and add reference to state
                 // gets multiplied by p for the probability of the path and then gets divided by p for importance sampling
-                return episode(memo, new_state, player, reach_me, reach_other * p, reach_sample * p);
+                return outcome_episode(memo, new_state, player, reach_me, reach_other * p, reach_sample * p);
             }
 
             auto cur_player = state.current_player();
@@ -336,28 +342,25 @@ namespace mccfr_es {
             Game new_state = state;
             new_state.step(actions[action_idx]); // todo later do this on state and add reference to state
 
-            T rec_child_value = episode(memo, new_state, player, new_reach_me, new_reach_other, new_reach_sample);
+            T rec_child_value = outcome_episode(memo, new_state, player, new_reach_me, new_reach_other, new_reach_sample);
 
             T value_estimate = 0;
 
             Utility baseline_update;
-            bool to_update = true;
             for(int i = 0; i < num_actions; i++) {
-                // Zero-sum game hack
-                const T baseline = cur_player == player? baseline_values[i] : -baseline_values[i];
+                const T baseline = (cur_player == player)? baseline_values[i]: 0.0f;
                 T child_value = (
                     (action_idx == i)
                     ? (baseline + (rec_child_value - baseline) / sample_policy[action_idx])
                     : (baseline)
                 );
                 memo.utility[i] = child_value * reach_other / reach_sample;
-                // Zero-sum game hack
-                baseline_update[i] = cur_player == player? child_value: -child_value;
+                baseline_update[i] = child_value;
                 value_estimate += child_value * policy[i];
             }
-            if(to_update) regret_minimizers[info_set_idx].update_baselines(baseline_update);
 
             if(cur_player == player) {
+                regret_minimizers[info_set_idx].update_baselines(baseline_update);
                 regret_minimizers[info_set_idx].observe_utility(memo.utility, policy);
                 // update average policy
                 for(int i = 0; i < num_actions; i++) {
@@ -369,7 +372,7 @@ namespace mccfr_es {
             return value_estimate;
         }
 
-    T external_episode(ComputeMemo &memo, const Game state, const Player player, const T reach_me=1.0, const T reach_other=1.0, const T reach_sample=1.0) {
+    T external_episode(ComputeMemo memo, const Game state, const Player player, const T reach_me=1.0, const T reach_other=1.0, const T reach_sample=1.0) {
             // std::cout << "entering " << " cur player is " << state.current_player() << std::endl;
             // std::cout << state << std::endl;
 
@@ -396,7 +399,7 @@ namespace mccfr_es {
                 Game new_state = state;
                 new_state.step(actions[action_idx]); // todo later do this on state and add reference to state
                 // gets multiplied by p for the probability of the path and then gets divided by p for importance sampling
-                return episode(memo, new_state, player, reach_me, reach_other * p, reach_sample * p);
+                return external_episode(memo, new_state, player, reach_me, reach_other * p, reach_sample * p);
             }
 
             auto cur_player = state.current_player();
@@ -416,54 +419,49 @@ namespace mccfr_es {
                     sample_policy[i] = policy[i];
                 }
             }
+
+            // Useful only when cur_player != player
+            int action_idx = memo.sample_index(sample_policy, num_actions);
+
             T new_reach_me, new_reach_other, new_reach_sample;
-            T rec_child_value;
-            int action_idx;
-
-            if (cur_player != player){
-                action_idx = memo.sample_index(sample_policy, num_actions);
-                new_reach_me = reach_me;
-                new_reach_other = reach_other * policy[action_idx];
-                new_reach_sample = reach_sample * policy[action_idx];
-
-                // be careful that after stepping the memo is changed because it is shared...
-                Game new_state = state;
-                new_state.step(actions[action_idx]); // todo later do this on state and add reference to state
-
-                if (cur_player != player) {
-                    rec_child_value = episode(memo, new_state, player, new_reach_me, new_reach_other, new_reach_sample);
-                }
-            }
-
             T value_estimate = 0;
 
+            Utility baseline_update;
             for(int i = 0; i < num_actions; i++) {
-                const T baseline = baseline_values[i]; // we can change later to improve the variance
-                T child_value = baseline;
+                const T baseline = cur_player == player? baseline_values[i]: 0.0f;
+                T rec_child_value = 0.0f, child_value = baseline;
                 if (cur_player == player) {
-                    Game new_state = state;
-                    new_state.step(actions[i]);
                     new_reach_me = reach_me * policy[i];
                     new_reach_other = reach_other;
-                    new_reach_sample = reach_sample * sample_policy[i];
-                    rec_child_value = episode(memo, new_state, player, new_reach_me, new_reach_other, new_reach_sample);
-                    child_value = baseline + (rec_child_value - baseline) / sample_policy[i];
+                    new_reach_sample = reach_sample;
+
+                    Game new_state = state;
+                    new_state.step(actions[i]);
+                    if (true){
+                        rec_child_value = external_episode(memo, new_state, player, new_reach_me, new_reach_other, new_reach_sample);
+                        child_value += rec_child_value - baseline;
+                    }
                 } else {
-                    child_value = (
-                        (action_idx == i)
-                        ? (baseline + (rec_child_value - baseline) / sample_policy[action_idx])
-                        : (baseline)
-                    );
+                    child_value = baseline;
+                    if (action_idx == i) {
+                        new_reach_me = reach_me;
+                        new_reach_other = reach_other * policy[i];
+                        new_reach_sample = reach_sample * sample_policy[i];
+
+                        Game new_state = state;
+                        new_state.step(actions[i]);
+                        rec_child_value = external_episode(memo, new_state, player, new_reach_me, new_reach_other, new_reach_sample);
+                        child_value += (rec_child_value - baseline) / sample_policy[i];
+                    }
                 }
-                std::cout << "rec_child_value " << rec_child_value << " baseline " << baseline << std::endl;
                 memo.utility[i] = child_value * reach_other / reach_sample;
+                baseline_update[i] = child_value;
                 value_estimate += child_value * policy[i];
             }
 
             if(cur_player == player) {
+                regret_minimizers[info_set_idx].update_baselines(baseline_update);
                 regret_minimizers[info_set_idx].observe_utility(memo.utility, policy);
-                regret_minimizers[info_set_idx].update_baselines(memo.utility, reach_sample, reach_other);
-
                 // update average policy
                 for(int i = 0; i < num_actions; i++) {
                     // why not update with new policy?
@@ -474,6 +472,9 @@ namespace mccfr_es {
             return value_estimate;
         }
 
+    T episode(ComputeMemo memo, const Game state, const Player player, const T reach_me=1.0, const T reach_other=1.0, const T reach_sample=1.0){
+        return external_episode(memo, state, player, reach_me, reach_other, reach_sample);
+    }
 
     public:
         void debug_print() {

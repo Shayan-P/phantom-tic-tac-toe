@@ -10,7 +10,7 @@
 
 // using Game = loaded_game::Kuhn;
 using Game = pttt::PTTT;
-using MCCFR = mccfr_es:MCCFR<Game>;
+using MCCFR = mccfr_es::MCCFR<Game>;
 using Strategy = strategy::Strategy<Game>;
 using Eval = eval::EvalFast<Game>;
 using namespace std;
@@ -89,7 +89,7 @@ int main() {
             auto elapsed_since_check = chrono::duration_cast<chrono::minutes>(now - last_checkpoint).count();
 
             cout << "minute_count=" << elapsed_since_start << " iters=" << iters.load() << endl;
-            if(elapsed_since_check > 60) { // every hour
+            if(elapsed_since_check > 30) { // every hour
                 last_checkpoint = now;
                 time_t t = time(nullptr);
                 tm* timePtr = localtime(&t);
