@@ -51,10 +51,13 @@ int main() {
     MCCFR mccfr;
     Game::precompute_if_needed(); // do this before starting the threads...
 
-    int num_threads = thread::hardware_concurrency();
+    mccfr.load_from_checkpoint("latest");
+
+    // int num_threads = thread::hardware_concurrency();
+    int num_threads = 1;
     cout << "Number of available cores: " << num_threads << endl; // I think this might not be the number of cores you have access to... maybe set this manually?
 
-    atomic<int> iters(0);
+    atomic<long long> iters(0);
     vector<thread> threads;
     for (int i = 0; i < num_threads; ++i) {
         threads.emplace_back([&mccfr, &iters]() {
@@ -78,7 +81,7 @@ int main() {
         
         struct Stat {
             int minutes;
-            int iters;
+            long long iters;
             double nash_gap;
         };
         std::vector<Stat> stats;
@@ -89,14 +92,14 @@ int main() {
             auto elapsed_since_check = chrono::duration_cast<chrono::minutes>(now - last_checkpoint).count();
 
             cout << "minute_count=" << elapsed_since_start << " iters=" << iters.load() << endl;
-            if(elapsed_since_check > 30) { // every hour
+            if(elapsed_since_check > 5) { // every hour
                 last_checkpoint = now;
                 time_t t = time(nullptr);
                 tm* timePtr = localtime(&t);
                 char buffer[80];
                 strftime(buffer, sizeof(buffer), "parallel_checkpoint__%m_%d_%Y_%H_%M_%S", timePtr);
                 mccfr.save_checkpoint(buffer);
-                mccfr.save_checkpoint("latest");
+                mccfr.save_checkpoint("latest_external_sampling");
             }
             if(true) { // define the frequency later...
                 auto start_stat = chrono::steady_clock::now();
@@ -104,19 +107,20 @@ int main() {
                 Strategy strategy = mccfr.get_strategy(); // loads a huge data structure. try to avoid :D 
                 std::cout << "P1 against unifrom: " << strategy.evaluate_against_uniform(Game::Player::P1, 5000) << std::endl;
                 std::cout << "P2 against uniform: " << strategy.evaluate_against_uniform(Game::Player::P2, 5000) << std::endl;
-                auto nash_gap = eval.nash_gap(strategy);
+                auto nash_gap = 0.0;
+                // auto nash_gap = eval.nash_gap(strategy);
                 stats.push_back({int(elapsed_since_start), iters.load(), nash_gap});
-                std::cout << "nash gap " << nash_gap << std::endl;
+                // std::cout << "nash gap " << nash_gap << std::endl;
 
-                std::vector<double> nash_gap_data;
-                std::vector<int> iters_data;
+                // std::vector<double> nash_gap_data;
+                std::vector<long long> iters_data;
                 std::vector<int> minutes_data;
                 for(auto &stat: stats) {
-                    nash_gap_data.push_back(stat.nash_gap);
+                    // nash_gap_data.push_back(stat.nash_gap);
                     iters_data.push_back(stat.iters);
                     minutes_data.push_back(stat.minutes);
                 }
-                io::save_to_numpy<double>("./nash_gaps.npy", nash_gap_data.begin(), nash_gap_data.end());
+                // io::save_to_numpy<double>("./nash_gaps.npy", nash_gap_data.begin(), nash_gap_data.end());
                 io::save_to_numpy<int>("./iters.npy", iters_data.begin(), iters_data.end());
                 io::save_to_numpy<int>("./minutes.npy", minutes_data.begin(), minutes_data.end());
 
