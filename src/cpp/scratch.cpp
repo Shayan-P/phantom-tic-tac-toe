@@ -19,6 +19,7 @@ std::ostream& operator<<(std::ostream& os, const std::array<T, N>& arr) {
 #include "rps.hpp"
 #include "paths.h"
 #include "mccfr.hpp"
+#include "mccfr_es.hpp"
 #include "evaluator.hpp"
 #include "io.hpp"
 
@@ -42,34 +43,54 @@ int count_histories(Game state) {
     return res + 1;
 }
 
-void nash_gap_check() {
-    using Game = rps::RPS;
-    Game game;
-    mccfr::MCCFR<Game> mccfr;
-    strategy::Strategy<Game> strategy = game.get_strategy(mccfr.get_strategy_data());
-    
-    std::cout << "P1 " << strategy.evaluate(Game::Player::P1, 100000) << std::endl;
-    std::cout << "P2 " << strategy.evaluate(Game::Player::P2, 100000) << std::endl;
-    std::cout << "result from evaluator " << std::endl;
-    eval::Eval<Game> evaluator;
+struct Stat {
+    double seconds;
+    long long iterations;
+    double nash_gap;
+};
 
-    std::cout << "created eval " << std::endl;
+using Game = rps::RPS;
+const std::string game_name = "rps";
 
-    std::cout << "P1 " << evaluator.eval_for(strategy, Game::Player::P1) << std::endl;
-    std::cout << "P2 " << evaluator.eval_for(strategy, Game::Player::P2) << std::endl;
+template<class MCCFR>
+void gather_data(MCCFR &mccfr, std::string name, int seconds_to_run) {
+    eval::EvalFast<Game> evaluator_fast;
+    std::vector<Stat> stats;
 
-    strategy::Strategy<Game> strategy_br1 = evaluator.best_response(strategy, Game::Player::P1);
+    auto start = std::chrono::steady_clock::now();
 
-    std::cout << "after best response player 1 " << std::endl;
-    std::cout << "P1 " << strategy_br1.evaluate(Game::Player::P1, 10000) << std::endl;
-    std::cout << "P2 " << strategy_br1.evaluate(Game::Player::P2, 10000) << std::endl;
+    long long iterations = 0;
 
-    std::cout << "P1 " << evaluator.eval_for(strategy_br1, Game::Player::P1) << std::endl;
-    std::cout << "P2 " << evaluator.eval_for(strategy_br1, Game::Player::P2) << std::endl;
+    while(true) {
+        mccfr.iteration();
+        strategy::Strategy<Game> strategy = mccfr.get_strategy();
+        auto gap_fast = evaluator_fast.nash_gap(strategy);
+        iterations++;
 
-    std::cout << "nash gap: " << evaluator.nash_gap(strategy) << std::endl;
+        auto now = std::chrono::steady_clock::now();
+        std::chrono::duration<double> elapsed_seconds = now - start;
+        double secs = elapsed_seconds.count();
 
-    std::cout << "nash gap: " << evaluator.nash_gap(strategy_br1) << std::endl;
+        stats.push_back({secs, iterations, gap_fast});
+
+        if(secs >= seconds_to_run) {
+            break;
+        }
+    }
+
+    std::vector<double> nash_gap_data;
+    std::vector<long long> iters_data;
+    std::vector<double> seconds_data;
+
+    for (const auto& stat : stats) {
+        nash_gap_data.push_back(stat.nash_gap);
+        iters_data.push_back(stat.iterations);
+        seconds_data.push_back(stat.seconds);
+    }
+
+    io::save_to_numpy<int>("./" + name + "iters.npy", iters_data.begin(), iters_data.end());
+    io::save_to_numpy<int>("./" + name + "seconds.npy", seconds_data.begin(), seconds_data.end());
+    io::save_to_numpy<double>("./" + name + "nash_gaps.npy", nash_gap_data.begin(), nash_gap_data.end());
 }
 
 
@@ -86,38 +107,18 @@ std::ostream& operator<<(std::ostream& os, const strategy::Strategy<Game>& strat
     return os;
 }
 
+#include <thread>
+
 int main() {
-    using Game = loaded_game::Leduc;
-
-    // eval::EvalFast<Game> evaluator_fast;
-
-    // strategy::Strategy<Game> strategy({
-    //     {1, 0, 0},
-    //     {0, 1, 0}
-    // });
-    // cout << strategy << endl;
-    // cout << evaluator_fast.best_response(strategy, Game::Player::P1) << endl;
     mccfr::MCCFR<Game> mccfr;
-    eval::Eval<Game> evaluator;
+    mccfr_es::MCCFR<Game> mccfr_es;
     eval::EvalFast<Game> evaluator_fast;
 
-    std::vector<double> gaps;
-    std::vector<double> gaps_fast;
-    for(int i = 0; i < 500000; i++) {
-        mccfr.iteration();
-        strategy::Strategy<Game> strategy = mccfr.get_strategy();
-        auto gap = evaluator.nash_gap(strategy);
-        gaps.push_back(gap);
-        // auto gap_fast = evaluator_fast.nash_gap(strategy);
-        // gaps_fast.push_back(gap_fast);
-        // std::cout << "strategy: " << std::endl;
-        // std::cout << strategy << std::endl;
-        std::cout << "nash gap: " << gap << std::endl;
-        // std::cout << "nash gap fast: " << gap_fast << std::endl;
-        assert(gap >= 0);
-        // assert(gap_fast >= 0);
-        // assert gap - gap_fast
-    }
-    io::save_to_numpy<double>("./gaps.npy", gaps.begin(), gaps.end());
-    // io::save_to_numpy<double>("./gaps_fast.npy", gaps_fast.begin(), gaps_fast.end());
+    int time_limit = 60 * 5;
+
+    std::thread thread1(gather_data<mccfr::MCCFR<Game>>, std::ref(mccfr), game_name + "_os_", time_limit);
+    std::thread thread2(gather_data<mccfr_es::MCCFR<Game>>, std::ref(mccfr_es), game_name + "_es_", time_limit);
+
+    thread1.join();
+    thread2.join();
 }
