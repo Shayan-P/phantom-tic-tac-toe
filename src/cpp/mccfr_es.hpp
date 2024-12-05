@@ -2,6 +2,8 @@
 #define IO_MCCFR_ES_HPP
 
 #define RMPLUS 0
+#define ENABLE_BASELINE 0
+#define OUTCOME_SAMPLE 0
 
 #include <array>
 #include <cassert>
@@ -345,22 +347,29 @@ namespace mccfr_es {
             T rec_child_value = outcome_episode(memo, new_state, player, new_reach_me, new_reach_other, new_reach_sample);
 
             T value_estimate = 0;
-
             Utility baseline_update;
             for(int i = 0; i < num_actions; i++) {
+                #if ENABLE_BASELINE
                 const T baseline = (cur_player == player)? baseline_values[i]: 0.0f;
+                #else
+                const T baseline = 0.0f;
+                #endif
                 T child_value = (
                     (action_idx == i)
                     ? (baseline + (rec_child_value - baseline) / sample_policy[action_idx])
                     : (baseline)
                 );
                 memo.utility[i] = child_value * reach_other / reach_sample;
+                #if ENABLE_BASELINE
                 baseline_update[i] = child_value;
+                #endif
                 value_estimate += child_value * policy[i];
             }
 
             if(cur_player == player) {
+                #if ENABLE_BASELINE
                 regret_minimizers[info_set_idx].update_baselines(baseline_update);
+                #endif
                 regret_minimizers[info_set_idx].observe_utility(memo.utility, policy);
                 // update average policy
                 for(int i = 0; i < num_actions; i++) {
@@ -428,7 +437,11 @@ namespace mccfr_es {
 
             Utility baseline_update;
             for(int i = 0; i < num_actions; i++) {
+                #if ENABLE_BASELINE
                 const T baseline = cur_player == player? baseline_values[i]: 0.0f;
+                #else
+                const T baseline = 0.0f;
+                #endif
                 T rec_child_value = 0.0f, child_value = baseline;
                 if (cur_player == player) {
                     new_reach_me = reach_me * policy[i];
@@ -455,12 +468,16 @@ namespace mccfr_es {
                     }
                 }
                 memo.utility[i] = child_value * reach_other / reach_sample;
+                #if ENABLE_BASELINE
                 baseline_update[i] = child_value;
+                #endif
                 value_estimate += child_value * policy[i];
             }
 
             if(cur_player == player) {
+                #if ENABLE_BASELINE
                 regret_minimizers[info_set_idx].update_baselines(baseline_update);
+                #endif
                 regret_minimizers[info_set_idx].observe_utility(memo.utility, policy);
                 // update average policy
                 for(int i = 0; i < num_actions; i++) {
@@ -473,7 +490,11 @@ namespace mccfr_es {
         }
 
     T episode(ComputeMemo memo, const Game state, const Player player, const T reach_me=1.0, const T reach_other=1.0, const T reach_sample=1.0){
+        #if OUTCOME_SAMPLE
+        return outcome_episode(memo, state, player, reach_me, reach_other, reach_sample);
+        #else
         return external_episode(memo, state, player, reach_me, reach_other, reach_sample);
+        #endif
     }
 
     public:
